@@ -64,3 +64,56 @@ describe('calculateYearlyExpenses — spouseAge wiring', () => {
         expect(couple.living).toBe(single.living);
     });
 });
+
+describe('calculateHealthcareCosts — per-person pre-Medicare costs', () => {
+    it('REGRESSION: omitting the spouse figures charges both at the primary rate', () => {
+        const shared = calculateHealthcareCosts(60, 60, PRE_MED, MED, PHASES, 0, 58);
+        const explicit = calculateHealthcareCosts(60, 60, PRE_MED, MED, PHASES, 0, 58, 60, PRE_MED);
+        expect(explicit.premiums).toBeCloseTo(shared.premiums, 10);
+        expect(explicit.outOfPocket).toBeCloseTo(shared.outOfPocket, 10);
+    });
+
+    it('bills each spouse their own premium', () => {
+        const spouseCosts: PreMedicareCosts = { monthlyPremium: 250, annualOutOfPocket: 500 };
+        const r = calculateHealthcareCosts(60, 60, PRE_MED, MED, PHASES, 0, 58, 60, spouseCosts);
+        // 1000/mo + 250/mo = 15,000/yr, not 2 x 12,000.
+        expect(r.premiums).toBeCloseTo(1000 * 12 + 250 * 12, 6);
+        expect(r.outOfPocket).toBeCloseTo(2000 + 500, 6);
+    });
+
+    it('switches to the second stage at that person\'s own change age', () => {
+        const staged: PreMedicareCosts = {
+            monthlyPremium: 250,
+            annualOutOfPocket: 500,
+            secondStage: { startAge: 60, monthlyPremium: 1100, annualOutOfPocket: 3000 },
+        };
+        // Spouse aged 59 — still on the cheap plan.
+        const before = calculateHealthcareCosts(65, 60, PRE_MED, MED, PHASES, 0, 59, 65, staged);
+        // Spouse aged 60 — switched to individual cover.
+        const after = calculateHealthcareCosts(66, 60, PRE_MED, MED, PHASES, 0, 60, 66, staged);
+        // The primary is 65+ in both, so on Medicare; the change is entirely the spouse's.
+        expect(after.premiums - before.premiums).toBeCloseTo((1100 - 250) * 12, 6);
+        expect(after.outOfPocket - before.outOfPocket).toBeCloseTo(3000 - 500, 6);
+    });
+
+    it('models the staggered-retirement case end to end', () => {
+        // You retire at 60 and ride your spouse's employer plan for $250/mo until Medicare.
+        // Your spouse (5 years younger) pays that same deduction while working, then buys
+        // individual cover at $1,100/mo when they retire at 60 — the year you turn 65.
+        const you: PreMedicareCosts = { monthlyPremium: 250, annualOutOfPocket: 500 };
+        const spouse: PreMedicareCosts = {
+            monthlyPremium: 250,
+            annualOutOfPocket: 500,
+            secondStage: { startAge: 60, monthlyPremium: 1100, annualOutOfPocket: 3000 },
+        };
+        const at = (clockAge: number) =>
+            calculateHealthcareCosts(clockAge, 60, you, MED, PHASES, 0, clockAge - 5, clockAge, spouse);
+
+        // Clock 62: you 62 (employer plan), spouse 57 and still working — both cheap.
+        expect(at(62).premiums).toBeCloseTo(250 * 12 * 2, 6);
+        // Clock 65: you on Medicare ($6,000), spouse 60 and now on individual cover.
+        expect(at(65).premiums).toBeCloseTo(6000 + 1100 * 12, 6);
+        // Clock 70: both on Medicare.
+        expect(at(70).premiums).toBeCloseTo(6000 * 2, 6);
+    });
+});

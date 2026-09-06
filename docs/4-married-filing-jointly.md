@@ -35,7 +35,7 @@ own 65 internally — that's the two-track cost model, separate from the primary
 | 8 | Social Security | **Two own-record streams** summed for the provisional-income formula while both are alive; the **larger one alone** after the first death. COLA and taxable-% are **shared** household values. No spousal (≤50%) top-up |
 | 9 | Standard deduction | MFJ base + **per-spouse** age-65 additions + senior bonus (senior count 0/1/2 from both ages) |
 | 10 | Spending phases | Household spending, keyed to **your** age |
-| 11 | Healthcare | **Two tracks** — each spouse pre-Medicare until their own 65, then Medicare — assuming equal per-person costs |
+| 11 | Healthcare | **Two tracks** — each spouse pre-Medicare until their own 65, then Medicare. Pre-Medicare premium/OOP are **per spouse**, and each may change once before 65 (second stage with its own start age) so a retiree can ride a still-working spouse's employer plan and then move to individual cover. Medicare figures shared |
 
 ## Shared vs. separate, by wizard step
 
@@ -63,8 +63,13 @@ own 65 internally — that's the two-track cost model, separate from the primary
 - **Pooled accounts + one RMD trigger** (older spouse while both live, the survivor after).
   Over-distributes slightly during a large spousal age gap — conservative (taxable income pulled
   forward; excess reinvested).
-- **Equal per-person healthcare costs**; the accuracy that matters (each spouse's Medicare
-  timing) is modeled, but we don't take separate premium/OOP figures per spouse.
+- **Shared Medicare figures.** Pre-Medicare premium/OOP are now per spouse, with an optional
+  mid-window change, but Part B / Part D / Medigap / IRMAA are one set applied to each person.
+  Part B and D are standard amounts, so the loss is limited to differing Medigap plans.
+- **Coverage source is implied, not modeled.** Entering a low premium is how you express "on my
+  spouse's employer plan"; the engine does not know who is working or who covers whom, and
+  cannot end employer coverage automatically at a second retirement date. Different retirement
+  dates remain unmodeled — see the roadmap.
 - **Own-record SS only** — the survivor takes the larger of the two own-record benefits, which is
   the substance of the survivor rule, but there is no spousal (≤50%) top-up.
 - **Part-time work belongs to the primary**, so it stops if the primary dies first. The spouse's

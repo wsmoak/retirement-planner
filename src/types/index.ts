@@ -95,6 +95,25 @@ export interface RentalIncome {
 export interface PreMedicareCosts {
     monthlyPremium: number;
     annualOutOfPocket: number;
+    /**
+     * Optional second stage of pre-Medicare coverage, beginning at `startAge` and
+     * running until that person turns 65.
+     *
+     * Exists because pre-Medicare coverage frequently changes ONCE mid-retirement:
+     * a retiree stays on a still-working spouse's employer plan for a modest payroll
+     * deduction, and then — when that spouse retires — moves to individual coverage at
+     * several times the price. Without this, the whole pre-65 window has to be entered
+     * at one figure, which is either too high for the employer-covered years or too low
+     * for the individual ones.
+     *
+     * Omitted for the common case of a single unchanging premium.
+     */
+    secondStage?: {
+        /** The person's own age when coverage changes — usually their retirement age. */
+        startAge: number;
+        monthlyPremium: number;
+        annualOutOfPocket: number;
+    };
 }
 
 export interface MedicareCosts {
@@ -177,6 +196,17 @@ export interface UserInputs {
     };
     healthcare: {
         preMedicare: PreMedicareCosts;
+        /**
+         * MFJ only: the spouse's own pre-Medicare costs. Optional — when absent the
+         * spouse uses `preMedicare`, which is exactly how the model behaved before
+         * per-person costs existed, so saved scenarios recompute unchanged.
+         *
+         * Separate because two spouses in the pre-65 window are frequently NOT paying
+         * the same thing: one may sit on the other's employer plan for a payroll
+         * deduction while the other buys individual coverage. Medicare costs stay
+         * shared — Part B and Part D are standard amounts.
+         */
+        spousePreMedicare?: PreMedicareCosts;
         medicare: MedicareCosts;
     };
     tax: TaxSettings;

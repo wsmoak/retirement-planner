@@ -38,7 +38,7 @@ interface InputsContextType {
     updatePension: (id: string, data: Partial<Pension>) => void;
     updatePartTimeWork: (data: Partial<PartTimeWork>) => void;
     updateRentalIncome: (data: Partial<RentalIncome>) => void;
-    updateHealthcare: (type: 'preMedicare' | 'medicare', data: Partial<PreMedicareCosts & MedicareCosts>) => void;
+    updateHealthcare: (type: 'preMedicare' | 'spousePreMedicare' | 'medicare', data: Partial<PreMedicareCosts & MedicareCosts>) => void;
     updateTax: (data: Partial<TaxSettings>) => void;
     updateWithdrawalStrategy: (data: Partial<UserInputs['withdrawalStrategy']>) => void;
     updateSimulation: (data: Partial<SimulationSettings>) => void;
@@ -195,12 +195,14 @@ export function InputsProvider({ children }: { children: ReactNode }) {
         }));
     }, []);
 
-    const updateHealthcare = useCallback((type: 'preMedicare' | 'medicare', data: Partial<PreMedicareCosts & MedicareCosts>) => {
+    const updateHealthcare = useCallback((type: 'preMedicare' | 'spousePreMedicare' | 'medicare', data: Partial<PreMedicareCosts & MedicareCosts>) => {
         setInputs((prev: UserInputs) => ({
             ...prev,
             healthcare: {
                 ...prev.healthcare,
-                [type]: { ...prev.healthcare[type], ...data },
+                // `spousePreMedicare` is absent until the user first edits it, so seed it
+                // from the primary's costs — that is the value the engine was already using.
+                [type]: { ...(prev.healthcare[type] ?? prev.healthcare.preMedicare), ...data },
             },
         }));
     }, []);

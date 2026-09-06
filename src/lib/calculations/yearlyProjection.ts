@@ -137,7 +137,10 @@ export function calculateYearlyProjection(
         simulation.healthcareInflationRate,
         spouseAge,
         household.spendingFactor,
-        filerAge
+        filerAge,
+        // Falls back to the primary's costs when the spouse has none of their own,
+        // which is how every scenario saved before per-person costs behaves.
+        healthcare.spousePreMedicare ?? healthcare.preMedicare
     );
 
     // STEP 4: Calculate initial taxes on fixed income
