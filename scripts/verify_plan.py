@@ -182,6 +182,9 @@ class Plan:
         self.rental = inputs["income"]["rentalIncome"]
         self.part_time = inputs["income"]["partTimeWork"]
         self.pre_med = inputs["healthcare"]["preMedicare"]
+        # Per-person pre-Medicare costs. Absent on plans saved before spouses could differ,
+        # and then the spouse simply uses the primary's figures — the old behavior exactly.
+        self.spouse_pre_med = inputs["healthcare"].get("spousePreMedicare") or self.pre_med
         self.med = inputs["healthcare"]["medicare"]
         self.filing = inputs["personal"].get("filingStatus") or "single"
         self.eff_rate = inputs["tax"]["combinedEffectiveRate"]
@@ -422,9 +425,20 @@ class Plan:
     # (same for both spouses — they retire the same year); Medicare inflates from each
     # person's own 65. MFJ sums two tracks (equal per-person costs); the Medicare OOP
     # phase is keyed to your age.
-    def _person_hc_premiums(self, person_age: int, yrs_since_ret: int) -> float:
+    @staticmethod
+    def _pre_med_stage(pre_med: dict, person_age: int) -> dict:
+        """Pre-Medicare coverage can change ONCE before 65 — typically when the employer
+        plan covering this person ends. Returns whichever stage governs `person_age`."""
+        stage = pre_med.get("secondStage")
+        if stage is not None and person_age >= stage["startAge"]:
+            return stage
+        return pre_med
+
+    def _person_hc_premiums(self, person_age: int, yrs_since_ret: int,
+                            pre_med: dict | None = None) -> float:
         if person_age < MEDICARE_AGE:
-            return self.pre_med["monthlyPremium"] * 12 * (1 + self.hc_infl) ** yrs_since_ret
+            stage = self._pre_med_stage(pre_med or self.pre_med, person_age)
+            return stage["monthlyPremium"] * 12 * (1 + self.hc_infl) ** yrs_since_ret
         yrs = person_age - MEDICARE_AGE
         monthly = (
             self.med["partBStandardPremium"]
@@ -434,9 +448,11 @@ class Plan:
         )
         return monthly * 12 * (1 + self.hc_infl) ** yrs
 
-    def _person_hc_oop(self, person_age: int, yrs_since_ret: int, phase_name: str) -> float:
+    def _person_hc_oop(self, person_age: int, yrs_since_ret: int, phase_name: str,
+                       pre_med: dict | None = None) -> float:
         if person_age < MEDICARE_AGE:
-            return self.pre_med["annualOutOfPocket"] * (1 + self.hc_infl) ** yrs_since_ret
+            stage = self._pre_med_stage(pre_med or self.pre_med, person_age)
+            return stage["annualOutOfPocket"] * (1 + self.hc_infl) ** yrs_since_ret
         yrs = person_age - MEDICARE_AGE
         oop_by_phase = self.med["outOfPocketByPhase"]
         base = {"go_go": oop_by_phase["phase1"],
@@ -453,7 +469,7 @@ class Plan:
         total = self._person_hc_premiums(self.filer_age(age), yrs_since_ret)
         sp_age = self.spouse_age(age)
         if sp_age is not None:
-            total += self._person_hc_premiums(sp_age, yrs_since_ret)
+            total += self._person_hc_premiums(sp_age, yrs_since_ret, self.spouse_pre_med)
         return total
 
     def exp_hc_oop(self, age: int) -> float:
@@ -464,7 +480,7 @@ class Plan:
         total = self._person_hc_oop(self.filer_age(age), yrs_since_ret, phase_name)
         sp_age = self.spouse_age(age)
         if sp_age is not None:
-            total += self._person_hc_oop(sp_age, yrs_since_ret, phase_name)
+            total += self._person_hc_oop(sp_age, yrs_since_ret, phase_name, self.spouse_pre_med)
         return total
 
     # -- taxes --

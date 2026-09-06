@@ -29,7 +29,8 @@ const SCOPES: Record<InputScope, { label: string; title: string; tone: string }>
         label: 'Per person',
         title:
             'Enter one person’s amount — it is applied to each spouse separately and summed. ' +
-            'Both spouses are assumed to cost the same.',
+            'Pre-Medicare premiums and out-of-pocket costs are entered per spouse; Medicare ' +
+            'figures are shared, since Part B and Part D are standard amounts.',
         tone: 'bg-teal-50 text-teal-700 border-teal-200',
     },
     'you-only': {

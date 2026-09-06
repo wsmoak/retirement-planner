@@ -9,6 +9,7 @@ import { HelpPopover } from '@/components/common/HelpPopover';
 import { InlineGuidance } from '@/components/common/InlineGuidance';
 import { ScopeBadge } from '@/components/common/ScopeBadge';
 import { LongTermCareSection } from '@/components/wizard/LongTermCareSection';
+import { PreMedicareCostFields } from '@/components/wizard/PreMedicareCostFields';
 
 export function Screen3Healthcare() {
     const { inputs, updateHealthcare } = useInputs();
@@ -29,8 +30,10 @@ export function Screen3Healthcare() {
                 {isMFJ && (
                     <p className="text-sm text-gray-500 mt-2">
                         Enter these as <strong>per-person</strong> costs — applied to each spouse on their own
-                        Medicare timeline (pre-Medicare until their own 65, then Medicare) and summed. Both spouses
-                        are assumed to have equal per-person costs.
+                        Medicare timeline (pre-Medicare until their own 65, then Medicare) and summed.
+                        Pre-Medicare costs are entered <strong>separately for each of you</strong>, since one
+                        spouse can sit on the other&apos;s employer plan while the other buys their own.
+                        Medicare figures are shared: Part B and Part D are standard amounts.
                     </p>
                 )}
             </div>
@@ -118,30 +121,38 @@ export function Screen3Healthcare() {
                     </p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <CurrencyField
-                        label="Monthly Insurance Premium"
-                        value={healthcare.preMedicare.monthlyPremium}
-                        onChange={(monthlyPremium) =>
-                            updateHealthcare('preMedicare', { ...healthcare.preMedicare, monthlyPremium })
-                        }
-                        step={25}
-                        helperText="Typical: $600–1,200/month per person"
+                <div className={`grid grid-cols-1 ${isMFJ ? 'lg:grid-cols-2' : ''} gap-4`}>
+                    <PreMedicareCostFields
+                        title={isMFJ ? 'You' : 'Your coverage'}
+                        startAge={personal.retirementAge}
+                        costs={healthcare.preMedicare}
+                        onChange={(data) => updateHealthcare('preMedicare', data)}
                     />
-
-                    <CurrencyField
-                        label="Annual Out-of-Pocket Expenses (Age < 65)"
-                        value={healthcare.preMedicare.annualOutOfPocket}
-                        onChange={(annualOutOfPocket) =>
-                            updateHealthcare('preMedicare', { ...healthcare.preMedicare, annualOutOfPocket })
-                        }
-                        step={100}
-                        helperText="Deductibles, copays, prescriptions"
-                    />
+                    {isMFJ && (
+                        <PreMedicareCostFields
+                            title="Your spouse"
+                            startAge={personal.spouseAgeAtRetirement ?? personal.retirementAge}
+                            costs={healthcare.spousePreMedicare ?? healthcare.preMedicare}
+                            onChange={(data) => updateHealthcare('spousePreMedicare', data)}
+                        />
+                    )}
                 </div>
 
                 <InlineGuidance variant="example" className="mt-3">
-                    <strong>Example:</strong> COBRA continuation from employer: $900/month premium + $3,000/year out-of-pocket = $13,800/year total
+                    {isMFJ ? (
+                        <>
+                            <strong>Example — staggered retirements:</strong> you retire first and stay
+                            on your spouse&apos;s employer plan for a $250/month payroll deduction until
+                            Medicare at 65. Your spouse keeps that same deduction while working, then
+                            switches to individual coverage at $1,100/month when they retire — enter
+                            that as their <em>coverage changes before 65</em> stage.
+                        </>
+                    ) : (
+                        <>
+                            <strong>Example:</strong> COBRA continuation from employer: $900/month
+                            premium + $3,000/year out-of-pocket = $13,800/year total
+                        </>
+                    )}
                 </InlineGuidance>
             </div>
 

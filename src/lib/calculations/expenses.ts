@@ -267,9 +267,15 @@ function calculatePersonHealthcare(
 ): { premiums: number; outOfPocket: number } {
     if (personAge < MEDICARE_AGE) {
         const inflation = Math.pow(1 + healthcareInflationRate, yearsSinceRetirement);
+        // Coverage can change once before 65 — typically when the spouse whose employer
+        // plan covered this person finally retires, moving them onto individual cover.
+        const stage =
+            preMedicare.secondStage !== undefined && personAge >= preMedicare.secondStage.startAge
+                ? preMedicare.secondStage
+                : preMedicare;
         return {
-            premiums: preMedicare.monthlyPremium * 12 * inflation,
-            outOfPocket: preMedicare.annualOutOfPocket * inflation,
+            premiums: stage.monthlyPremium * 12 * inflation,
+            outOfPocket: stage.annualOutOfPocket * inflation,
         };
     }
 
@@ -332,7 +338,12 @@ export function calculateHealthcareCosts(
      * Passing the survivor's age here keeps the clock intact while moving the
      * person track onto whoever is actually alive.
      */
-    filerAge: number = currentAge
+    filerAge: number = currentAge,
+    /**
+     * MFJ only: the spouse's own pre-Medicare costs. Defaults to the primary's, which
+     * is how the model behaved before per-person costs existed.
+     */
+    spousePreMedicare: PreMedicareCosts = preMedicare
 ): {
     premiums: number;
     outOfPocket: number;
@@ -357,7 +368,7 @@ export function calculateHealthcareCosts(
 
     if (spouseAge !== undefined) {
         const spouse = calculatePersonHealthcare(
-            spouseAge, yearsSinceRetirement, preMedicare, medicare, phase, healthcareInflationRate
+            spouseAge, yearsSinceRetirement, spousePreMedicare, medicare, phase, healthcareInflationRate
         );
         premiums += spouse.premiums;
         outOfPocket += spouse.outOfPocket;
@@ -442,6 +453,8 @@ export function calculateYearlyExpenses(
     spendingFactor: number = 1,
     /** The living person the first healthcare track insures. Defaults to the primary. */
     filerAge: number = currentAge,
+    /** MFJ only: the spouse's own pre-Medicare costs. Defaults to the primary's. */
+    spousePreMedicare: PreMedicareCosts = preMedicare,
     /**
      * Long-term care for the year. Its cost is a separate expense line (not folded into
      * healthcare, so the Annual Breakdown can show it), and its `livingExpenseOffset`
@@ -471,7 +484,8 @@ export function calculateYearlyExpenses(
         phases,
         healthcareInflationRate,
         spouseAge,
-        filerAge
+        filerAge,
+        spousePreMedicare
     );
 
     const oneTime = calculateOneTimeExpenses(

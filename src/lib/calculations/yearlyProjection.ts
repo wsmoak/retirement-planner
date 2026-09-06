@@ -158,6 +158,9 @@ export function calculateYearlyProjection(
         spouseAge,
         household.spendingFactor,
         filerAge,
+        // Falls back to the primary's costs when the spouse has none of their own,
+        // which is how every scenario saved before per-person costs behaves.
+        healthcare.spousePreMedicare ?? healthcare.preMedicare,
         care
     );
 

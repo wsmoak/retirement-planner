@@ -158,8 +158,11 @@ property tax/maintenance/vacancy/depreciation or sale capital-gains modeling.
 ## 5. HEALTHCARE COSTS
 
 Often the largest variable expense; modeled per person by age. For MFJ, each spouse is on
-their own track — pre-Medicare until their own 65, then Medicare — assuming equal per-person
-costs (see [`4-married-filing-jointly.md`](4-married-filing-jointly.md)). All defaults live in `constants.ts` and inflate at the
+their own track — pre-Medicare until their own 65, then Medicare. **Pre-Medicare premiums and
+out-of-pocket costs are entered per spouse**, and each may change once before 65 (a second stage
+with its own start age), which is how a retiree on a still-working spouse's employer plan moves
+to individual coverage when that spouse retires. Medicare figures stay shared — Part B and Part D
+are standard amounts (see [`4-married-filing-jointly.md`](4-married-filing-jointly.md)). All defaults live in `constants.ts` and inflate at the
 healthcare rate (default 5%).
 
 ### 5.1 Pre-Medicare (age < 65)
