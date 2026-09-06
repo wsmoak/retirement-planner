@@ -58,16 +58,20 @@ costs, and steps living expenses down to 75% of the couple's ·
 **long-term care as a stress test** — an optional care episode per person (assisted living, nursing
 home, or care at home) anchored to the final years of that person's life, priced against the plan
 and reported as a **delta versus a clean baseline** rather than folded into the headline number,
-including the medical-expense deduction that a care year triggers.
+including the medical-expense deduction that a care year triggers ·
+**one-time income** — a lump-sum inflow in a chosen year (selling or downsizing the house, an
+inheritance), treated as tax-free and reinvested if it exceeds that year's needs.
 
 **What it deliberately does *not* model** — pre-retirement accumulation · **state income tax for
 the other 38 states** (fold your rate into the marginal rate yourself) ·
-ACA subsidies for pre-Medicare coverage · **Medicaid spend-down** and **home equity** — the two
-things that most often pay for long-term care in reality ·
+ACA subsidies for pre-Medicare coverage · **Medicaid spend-down** — the backstop that most often
+pays for long-term care once assets run out ·
+**a house as an asset** (no value, mortgage, or appreciation — though a planned *sale* can be
+entered as one-time income) ·
 per-spouse accounts (couples' balances are pooled) · spousal and survivor Social Security
 rules beyond taking the larger own-record benefit · the spouse's own earned income ·
 variable inflation · dynamic spending guardrails · fat-tail crashes · fees and transaction costs ·
-home equity and mortgages · **non-income state and local taxes** (sales, property, excise) — a
+**non-income state and local taxes** (sales, property, excise) — a
 no-income-tax state is not necessarily a low-tax state.
 
 **Key simplifications** — one marginal rate above the standard deduction rather than the full

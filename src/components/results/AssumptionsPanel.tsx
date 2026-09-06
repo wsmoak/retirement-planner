@@ -302,7 +302,7 @@ export default function AssumptionsPanel({ inputs }: AssumptionsPanelProps) {
                             <li>Sequence of returns risk mitigation strategies</li>
                             <li>Dynamic asset allocation (glide paths)</li>
                             <li>Inflation variability (uses fixed rates)</li>
-                            <li><strong>Primary residence:</strong> Home equity, mortgage payments, property taxes, home appreciation, reverse mortgages, or HELOC interest costs</li>
+                            <li><strong>Primary residence as an asset:</strong> no home value, mortgage payments, property taxes, home appreciation, reverse mortgages, or HELOC interest. A planned <em>sale</em> can be entered as one-time income; living in the house cannot be.</li>
                             <li>Business income or equity compensation</li>
                         </ul>
                     </div>
@@ -310,9 +310,10 @@ export default function AssumptionsPanel({ inputs }: AssumptionsPanelProps) {
                         <h4 className="font-semibold mb-2">Life Events:</h4>
                         <ul className="list-disc list-inside space-y-1">
                             <li>
-                                <strong>Medicaid spend-down and home equity</strong> — the two things
-                                that most often pay for long-term care in real life. Care itself is
-                                modeled as an optional stress test.
+                                <strong>Medicaid spend-down</strong> — the backstop that most often
+                                pays for long-term care once assets run out. Care itself is modeled
+                                as an optional stress test, and a house sale can be entered as
+                                one-time income.
                             </li>
                             <li>Probabilistic mortality (the survivor's penalty <em>is</em> modeled, but from two fixed ages you choose — not a distribution)</li>
                             <li>Inheritance or windfalls</li>
@@ -346,9 +347,12 @@ export default function AssumptionsPanel({ inputs }: AssumptionsPanelProps) {
                             you need somewhere to live — by default, just leave it out of your plan.
                         </p>
                         <p className="mb-1">
-                            If you plan to downsize, model it directly: add a One-Time Expense in Step 1 for moving
-                            costs at your planned sale age, add the net sale proceeds to your Taxable Account
-                            balance, and lower your spending afterward to reflect the smaller home.
+                            If you plan to downsize or sell, model it directly in Step 1: add the net proceeds as
+                            <strong> One-Time Income</strong> in the year you expect the sale, add a One-Time
+                            Expense for moving costs, and lower your phase spending afterward to reflect the
+                            smaller home (or raise it if you will be renting). Do <strong>not</strong> fold the
+                            proceeds into your starting Taxable balance — that would hand you the money decades
+                            early and let it compound the whole time.
                         </p>
                         <p className="text-xs mt-2 text-blue-800 italic">
                             What we DON'T model: mortgage payments, property taxes, home appreciation vs inflation,

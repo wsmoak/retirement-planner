@@ -6,6 +6,7 @@ import type {
     PersonalInfo,
     RetirementPhase,
     OneTimeExpense,
+    OneTimeIncome,
     InvestmentAccount,
     HSAAccount,
     SocialSecurity,
@@ -34,6 +35,9 @@ interface InputsContextType {
     addOneTimeExpense: (expense: OneTimeExpense) => void;
     removeOneTimeExpense: (id: string) => void;
     updateOneTimeExpense: (id: string, data: Partial<OneTimeExpense>) => void;
+    addOneTimeIncome: (entry: OneTimeIncome) => void;
+    removeOneTimeIncome: (id: string) => void;
+    updateOneTimeIncome: (id: string, data: Partial<OneTimeIncome>) => void;
     updateAccount: (type: 'taxDeferred' | 'roth' | 'taxable', data: Partial<InvestmentAccount>) => void;
     updateHSA: (data: Partial<HSAAccount>) => void;
     updateSocialSecurity: (data: Partial<SocialSecurity>) => void;
@@ -96,6 +100,31 @@ export function InputsProvider({ children }: { children: ReactNode }) {
         setInputs((prev: UserInputs) => ({
             ...prev,
             oneTimeExpenses: prev.oneTimeExpenses.map((e: OneTimeExpense) =>
+                e.id === id ? { ...e, ...data } : e
+            ),
+        }));
+    }, []);
+
+    // One-time INCOME mirrors the expense list. `oneTimeIncome` is absent on scenarios
+    // saved before it existed, so every path treats undefined as an empty list.
+    const addOneTimeIncome = useCallback((entry: OneTimeIncome) => {
+        setInputs((prev: UserInputs) => ({
+            ...prev,
+            oneTimeIncome: [...(prev.oneTimeIncome ?? []), entry],
+        }));
+    }, []);
+
+    const removeOneTimeIncome = useCallback((id: string) => {
+        setInputs((prev: UserInputs) => ({
+            ...prev,
+            oneTimeIncome: (prev.oneTimeIncome ?? []).filter((e: OneTimeIncome) => e.id !== id),
+        }));
+    }, []);
+
+    const updateOneTimeIncome = useCallback((id: string, data: Partial<OneTimeIncome>) => {
+        setInputs((prev: UserInputs) => ({
+            ...prev,
+            oneTimeIncome: (prev.oneTimeIncome ?? []).map((e: OneTimeIncome) =>
                 e.id === id ? { ...e, ...data } : e
             ),
         }));
@@ -277,6 +306,9 @@ export function InputsProvider({ children }: { children: ReactNode }) {
                 addOneTimeExpense,
                 removeOneTimeExpense,
                 updateOneTimeExpense,
+                addOneTimeIncome,
+                removeOneTimeIncome,
+                updateOneTimeIncome,
                 updateAccount,
                 updateHSA, 
                 updateSocialSecurity,

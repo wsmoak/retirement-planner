@@ -17,6 +17,7 @@ import { InlineGuidance } from '@/components/common/InlineGuidance';
 import { ScopeBadge } from '@/components/common/ScopeBadge';
 import { isStateModeled } from '@/lib/calculations/stateTaxRules';
 import { resolveSpouseLifeExpectancy, simulationHorizon } from '@/lib/calculations/household';
+import { OneTimeIncomeSection } from '@/components/wizard/OneTimeIncomeSection';
 
 const MIN_PHASE_SPENDING = 1000;
 
@@ -453,6 +454,8 @@ export function Screen1Plan() {
                     )}
                 </div>
             </div>
+
+            <OneTimeIncomeSection />
         </div>
     );
 }

@@ -44,6 +44,7 @@ function proj(
             pensions: 0,
             partTimeWork: overrides.partTimeWork ?? 0,
             rentalIncome: 0,
+            oneTimeIncome: 0,
             totalBeforeWithdrawals: overrides.socialSecurity ?? 0,
         },
         expenses: {

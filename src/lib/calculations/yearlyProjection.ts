@@ -6,13 +6,12 @@ import { calculateYearlyIncome } from '@/lib/calculations/income';
 import { calculateTotalTaxes, calculateTaxOnFixedIncome } from '@/lib/calculations/taxes';
 import {
     executeWithdrawals,
-    handleSurplus,
     calculateTotalPortfolio,
     isPortfolioDepleted,
     type AccountBalances,
 } from '@/lib/calculations/withdrawals';
 import { generateAccountReturns } from '@/lib/calculations/random';
-import { RMD_START_AGE } from '@/lib/calculations/rmd';
+import { RMD_START_AGE, calculateRMD } from '@/lib/calculations/rmd';
 import { computeStateTax, type StateTaxInputs } from '@/lib/calculations/stateTax';
 import { getStateTaxRules } from '@/lib/calculations/stateTaxRules';
 import { resolveHousehold, simulationHorizon } from '@/lib/calculations/household';
@@ -30,6 +29,12 @@ export interface YearlyProjection {
         pensions: number;
         partTimeWork: number;
         rentalIncome: number;
+        /**
+         * Tax-free one-off inflows — home sale proceeds, an inheritance. Its own line so
+         * the Annual Breakdown can show the spike, and so the verification bundle carries
+         * it. 0 in every year without one.
+         */
+        oneTimeIncome: number;
         totalBeforeWithdrawals: number;
     };
 
@@ -142,7 +147,9 @@ export function calculateYearlyProjection(
         // The NOTIONAL spouse age: a survivor inherits the larger benefit, and that
         // benefit keeps receiving COLA, so it must go on being computed after a death.
         household.spouseAgeNotional,
-        deceased
+        deceased,
+        inputs.oneTimeIncome,
+        personal.retirementAge
     );
 
     // STEP 3: Calculate expenses
@@ -304,16 +311,35 @@ export function calculateYearlyProjection(
 
         portfolioIsDepleted = isPortfolioDepleted(updatedBalances);
     } else {
-        // Surplus case: income > expenses
+        // Surplus case: income covers the year outright.
+        //
+        // The RMD still has to come out. It is a legal minimum keyed to age and balance,
+        // not to whether the money is needed — so a year funded entirely by a home sale,
+        // an inheritance, or unusually large fixed income does NOT get to skip it. Leaving
+        // it out understated taxable income that year AND left the tax-deferred balance too
+        // high, inflating every later RMD: optimistic in both directions.
         const surplus = Math.abs(cashFlowGap);
-        updatedBalances = handleSurplus(surplus, currentBalances);
+        const rmdAmount =
+            rmdAge >= RMD_START_AGE
+                ? Math.min(
+                    calculateRMD(rmdAge, currentBalances.taxDeferred, RMD_START_AGE),
+                    currentBalances.taxDeferred
+                )
+                : 0;
+
+        // Take the distribution; the proceeds are reinvested below by the shared
+        // post-tax block, net of the tax they attract.
+        updatedBalances = {
+            ...currentBalances,
+            taxDeferred: currentBalances.taxDeferred - rmdAmount,
+        };
 
         withdrawalResult = {
-            withdrawals: { taxDeferred: 0, roth: 0, taxable: 0, hsa: 0 },
-            taxOnWithdrawals: 0,
+            withdrawals: { taxDeferred: rmdAmount, roth: 0, taxable: 0, hsa: 0 },
+            taxOnWithdrawals: 0,   // settled by the final tax pass below
             updatedBalances,
-            rmdAmount: 0,
-            rmdExcess: surplus,
+            rmdAmount,
+            rmdExcess: surplus + rmdAmount,
             hsaForHealthcare: 0,
             iterations: 1,
             converged: true,
@@ -377,13 +403,15 @@ export function calculateYearlyProjection(
         expensesResult.total -
         totalTax;
 
-    // Reinvest surplus from the withdrawal branch into the taxable account. This
-    // covers both forced-RMD excess and the small over-withdrawal that arises
-    // because the withdrawal engine's gross-up ignores the deduction floor. Without
-    // this, that cash would leak out and understate the final balance. (The surplus
-    // branch above already reinvests via handleSurplus, so only the withdrawal
-    // branch needs it here.)
-    if (cashFlowGap > 0 && netCashFlow > 0) {
+    // Reinvest whatever the year did not consume into the taxable account. This covers
+    // forced-RMD excess and the small over-withdrawal that arises because the withdrawal
+    // engine's gross-up ignores the deduction floor. Without it that cash would leak out
+    // and understate the final balance.
+    //
+    // Applies to BOTH branches. `netCashFlow` is by definition what is left after the
+    // year is paid for, so it is the right amount to reinvest whether it came from an
+    // over-withdrawal, a forced RMD, or income simply exceeding expenses.
+    if (netCashFlow > 0) {
         updatedBalances.taxable += netCashFlow;
     }
 
@@ -440,6 +468,7 @@ export function calculateYearlyProjection(
             pensions: incomeResult.pensions,
             partTimeWork: incomeResult.partTimeWork,
             rentalIncome: incomeResult.rentalIncome,
+            oneTimeIncome: incomeResult.oneTimeIncome,
             totalBeforeWithdrawals: incomeResult.totalBeforeWithdrawals,
         },
 

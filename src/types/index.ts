@@ -45,6 +45,27 @@ export interface OneTimeExpense {
     age: number;
 }
 
+/**
+ * A one-off cash inflow at a chosen age — the mirror image of a one-time expense.
+ *
+ * The motivating case is **home equity**: downsizing or selling the house, which this
+ * tool otherwise ignores entirely. Also covers an inheritance, a gift, or a business
+ * sale. Whatever lands here is spent first and any surplus is reinvested into the
+ * taxable account, which is what actually happens to sale proceeds.
+ *
+ * TREATED AS TAX-FREE. That is right for the dominant cases: a principal-residence
+ * sale is mostly a return of basis, and the §121 exclusion ($250k single / $500k MFJ)
+ * covers the gain for most long-held homes; inheritances and gifts are not income to
+ * the recipient either. For a windfall that IS taxable — a business sale, gain above
+ * the §121 exclusion, an inherited IRA — enter the amount you keep AFTER tax.
+ */
+export interface OneTimeIncome {
+    id: string;
+    description: string;
+    amount: number;
+    age: number;
+}
+
 export interface InvestmentAccount {
     balanceAtRetirement: number;
     expectedReturnRate: number;
@@ -204,6 +225,11 @@ export interface UserInputs {
     personal: PersonalInfo;
     phases: [RetirementPhase, RetirementPhase, RetirementPhase];
     oneTimeExpenses: OneTimeExpense[];
+    /**
+     * Optional so scenarios saved before one-time income existed stay valid — a missing
+     * value reads as an empty list, which reproduces the old numbers exactly.
+     */
+    oneTimeIncome?: OneTimeIncome[];
     accounts: {
         taxDeferred: InvestmentAccount;
         roth: InvestmentAccount;

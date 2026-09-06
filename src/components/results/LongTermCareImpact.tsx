@@ -111,8 +111,9 @@ export function LongTermCareImpact({ results, inputs }: Props) {
                 <strong>Read this before acting on it.</strong> Medicare covers no custodial care,
                 but Medicaid does after assets are spent down — and it protects part of a surviving
                 spouse&apos;s assets and income. A plan that &quot;fails&quot; here transitions to
-                Medicaid, not to destitution. This tool also models no home equity, which is how
-                many families actually pay for care. Both omissions make this estimate
+                Medicaid, not to destitution. Selling a house is how many families actually pay for
+                care — there is no home value modeled here, but you can enter the sale as{' '}
+                <strong>one-time income</strong> on the Plan step. Left out, both make this estimate
                 <strong> pessimistic</strong>; leaving out care entirely would have been far more
                 optimistic.
             </p>

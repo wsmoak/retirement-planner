@@ -201,6 +201,8 @@ class Plan:
         # reaches their own life expectancy — the old shared horizon, so such a plan verifies
         # exactly as it always did. Mirrors resolveSpouseLifeExpectancy in
         # src/lib/calculations/household.ts.
+        # One-off inflows (home equity, inheritance). Absent on older plans → empty.
+        self.one_time_income = inputs.get("oneTimeIncome") or []
         # Long-term care stress test. Absent on plans saved before the feature existed,
         # and switched off by default, so either way the plan verifies as it always did.
         self.ltc = inputs.get("longTermCare")
@@ -410,6 +412,20 @@ class Plan:
         if r.get("inflationAdjusted"):
             return base * (1 + self.gen_infl) ** (age - r["startAge"])
         return base
+
+    def exp_one_time_income(self, age: int) -> float:
+        """One-off inflows landing this year — home sale, inheritance, gift.
+
+        Mirrors `calculateOneTimeIncome` in src/lib/calculations/income.ts. Entered in
+        retirement-year dollars and inflated at the general rate, like one-time expenses.
+        Deliberately TAX-FREE: it never enters any taxable base, so a home sale reduces
+        the year's cash need without inflating AGI (see the OneTimeIncome type).
+        """
+        total = 0.0
+        for entry in (self.one_time_income or []):
+            if entry["age"] == age:
+                total += entry["amount"] * (1 + self.gen_infl) ** (age - self.retirement_age)
+        return total
 
     # -- expenses --
     def exp_living(self, age: int) -> float:
@@ -842,10 +858,15 @@ def verify(bundle: dict, percentile: str, tol: float) -> int:
         chk("Healthcare Out-of-Pocket", exp["healthcareOutOfPocket"], plan.exp_hc_oop(age), issues)
 
         # Component sums
-        chk("Total Income = SS + Pensions + Work + Rental",
+        # `oneTimeIncome` is absent from bundles exported before one-off inflows existed.
+        chk("Total Income = SS + Pensions + Work + Rental + One-Time Income",
             inc["totalBeforeWithdrawals"],
-            inc["socialSecurity"] + inc["pensions"] + inc["partTimeWork"] + inc["rentalIncome"],
+            inc["socialSecurity"] + inc["pensions"] + inc["partTimeWork"] + inc["rentalIncome"]
+            + inc.get("oneTimeIncome", 0.0),
             issues)
+
+        chk("One-Time Income", inc.get("oneTimeIncome", 0.0),
+            plan.exp_one_time_income(age), issues)
 
         # `longTermCare` is absent from bundles exported before the care stress test existed.
         chk("Total Expenses = Living + Premiums + OOP + One-Time + Long-Term Care",

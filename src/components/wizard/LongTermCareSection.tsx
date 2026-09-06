@@ -176,8 +176,10 @@ export function LongTermCareSection() {
                         destitution — it means a transition this tool does not model.
                     </li>
                     <li>
-                        <strong>Home equity.</strong> Care is often funded by selling a house, and
-                        this tool models no home equity, so it overstates the damage for homeowners.
+                        <strong>A house, as an asset.</strong> Care is often funded by selling one.
+                        There is no home value, mortgage, or appreciation here — but you can add the
+                        sale as <strong>one-time income</strong> on the Plan step, in the year you
+                        expect it. Without that, a care scenario overstates the damage for homeowners.
                     </li>
                     <li>
                         <strong>Long-term care insurance</strong> and unpaid care from family.

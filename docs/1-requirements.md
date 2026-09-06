@@ -265,14 +265,16 @@ Honest disclosure sets realistic expectations. Displayed prominently on results:
   care episode per person and the app reports the result as a delta against a baseline with care
   switched off. Anchored to the final years of that person's life; a facility stay displaces part
   of the household budget; the cost is deducted as a medical expense above 7.5% of AGI (the only
-  itemized deduction in the model). **Medicaid spend-down and home equity are NOT modeled**, so a
-  care scenario is pessimistic in that respect.
+  itemized deduction in the model). **Medicaid spend-down is NOT modeled**, so a care scenario is
+  pessimistic in that respect. A house is not modeled as an asset either, but a planned sale can be
+  entered as one-time income (§2.2).
 - **Spending:** constant within each phase; no market-based or dynamic adjustments.
 - **Mortality / couples:** fixed life expectancies (no distribution), but **per spouse** for MFJ —
   the plan runs to the later death and **the survivor's penalty is modeled** (MFJ→single, the
   smaller SS check stops, one healthcare track, living expenses step down to 75%). What remains
   deterministic is *when* each death happens (see [`4-married-filing-jointly.md`](4-married-filing-jointly.md)).
-- **Not modeled:** pre-retirement accumulation, Medicaid spend-down, home equity, long-term care
+- **Not modeled:** pre-retirement accumulation, Medicaid spend-down, a house as an asset
+  (mortgage, appreciation, reverse mortgage — a *sale* is enterable as one-time income), long-term care
   insurance, actual brackets, dynamic spending, estate planning, inflation variability, ACA
   subsidies, Roth conversions, and state tax outside the thirteen modeled states.
 
@@ -422,7 +424,8 @@ one market shock; inflation is constant; spending is constant within a phase.
 including the survivor's penalty); no pre-retirement accumulation; fixed life expectancies
 (per spouse, but not probabilistic); simplified tax
 (marginal rate + deduction floor, no full brackets, medical-expense itemizing only in a care year);
-long-term care as an opt-in stress test with no Medicaid or home equity; state tax for thirteen
+long-term care as an opt-in stress test with no Medicaid modeling; no house as an asset (a sale is
+enterable as one-time income); state tax for thirteen
 states only (§2.1); no ACA subsidies; no Roth conversions yet; no dynamic spending. Client-side only;
 localStorage is unencrypted ("don't use on shared computers"); no SSN/account numbers/names required.
 

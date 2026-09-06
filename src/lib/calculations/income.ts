@@ -14,7 +14,7 @@ import {
     calculateSocialSecurityWithEarningsTest,
     calculateSocialSecurityBenefit,
 } from './socialSecurity';
-import type { Pension, PartTimeWork, RentalIncome, SocialSecurity } from '@/types';
+import type { OneTimeIncome, Pension, PartTimeWork, RentalIncome, SocialSecurity } from '@/types';
 import type { DeceasedPerson } from '@/lib/calculations/household';
 
 /**
@@ -247,6 +247,33 @@ export function calculateRentalIncome(
  *   0.03
  * );
  */
+/**
+ * One-off inflows landing at `currentAge` — home sale proceeds, an inheritance, a gift.
+ *
+ * Mirrors `calculateOneTimeExpenses`: amounts are entered in retirement-year dollars and
+ * inflated forward at the general rate, so a house "worth $400k today" is worth more when
+ * sold at 80. Housing does not actually track general inflation, but using one rate keeps
+ * the inflow on the same footing as every other dollar figure in the plan.
+ *
+ * Tax-free by construction — this value is deliberately NOT passed to any tax function.
+ * See the `OneTimeIncome` type for why, and for what to do with a taxable windfall.
+ */
+export function calculateOneTimeIncome(
+    currentAge: number,
+    oneTimeIncome: OneTimeIncome[] | undefined,
+    retirementAge: number,
+    generalInflationRate: number
+): number {
+    if (!oneTimeIncome || oneTimeIncome.length === 0) return 0;
+
+    return oneTimeIncome
+        .filter((e) => e.age === currentAge)
+        .reduce((sum, entry) => {
+            const yearsSinceRetirement = entry.age - retirementAge;
+            return sum + entry.amount * Math.pow(1 + generalInflationRate, yearsSinceRetirement);
+        }, 0);
+}
+
 export function calculateYearlyIncome(
     currentAge: number,
     socialSecurity: SocialSecurity,
@@ -266,7 +293,11 @@ export function calculateYearlyIncome(
      * Which spouse has died, if either. Once one has, the household stops receiving
      * two checks and receives one survivor benefit instead. See `household.ts`.
      */
-    deceased?: DeceasedPerson
+    deceased?: DeceasedPerson,
+    /** One-off inflows for this year (home sale, inheritance). Tax-free — see the type. */
+    oneTimeIncome?: OneTimeIncome[],
+    /** Needed to inflate one-time income from retirement-year dollars. */
+    retirementAge?: number
 ): {
     socialSecurity: number;
     socialSecurityFull: number;
@@ -277,6 +308,8 @@ export function calculateYearlyIncome(
     partTimeWork: number;
     partTimePayrollTax: number;
     rentalIncome: number;
+    /** Tax-free one-off inflows this year. Included in `totalBeforeWithdrawals`. */
+    oneTimeIncome: number;
     totalBeforeWithdrawals: number;
 } {
     // Part-time work belongs to the PRIMARY — the spouse's own earned income isn't
@@ -338,9 +371,20 @@ export function calculateYearlyIncome(
     const householdSocialSecurity =
         deceased ? Math.max(ssResult.finalBenefit, spouseBenefit) : ssResult.finalBenefit + spouseBenefit;
 
+    // One-off inflows (home sale, inheritance). Deliberately kept out of every taxable
+    // component below — it reduces the year's cash need and any surplus is reinvested,
+    // but it never lands in AGI.
+    const oneTimeIncomeAmount = calculateOneTimeIncome(
+        currentAge,
+        oneTimeIncome,
+        retirementAge ?? currentAge,
+        generalInflationRate
+    );
+
     // Total income before portfolio withdrawals
     const totalBeforeWithdrawals =
-        householdSocialSecurity + pensionTotal + partTimeIncome + rentalIncomeAmount;
+        householdSocialSecurity + pensionTotal + partTimeIncome + rentalIncomeAmount +
+        oneTimeIncomeAmount;
 
     return {
         socialSecurity: householdSocialSecurity,
@@ -355,6 +399,7 @@ export function calculateYearlyIncome(
         partTimeWork: partTimeIncome,
         partTimePayrollTax,
         rentalIncome: rentalIncomeAmount,
+        oneTimeIncome: oneTimeIncomeAmount,
         totalBeforeWithdrawals,
     };
 }

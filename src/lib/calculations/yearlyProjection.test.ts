@@ -532,6 +532,107 @@ describe('state tax', () => {
     });
 });
 
+describe('runCompleteSimulation — one-time income (home equity)', () => {
+    function plan(): UserInputs {
+        const inputs = makeInputs();
+        inputs.personal.retirementAge = 65;
+        inputs.personal.lifeExpectancy = 90;
+        inputs.personal.filingStatus = 'single';
+        inputs.accounts.taxDeferred.balanceAtRetirement = 800_000;
+        inputs.accounts.roth.balanceAtRetirement = 200_000;
+        inputs.accounts.taxable.balanceAtRetirement = 200_000;
+        inputs.accounts.hsa.balanceAtRetirement = 0;
+        inputs.simulation.returnStdDeviation = 0;
+        inputs.simulation.generalInflationRate = 0;
+        inputs.withdrawalStrategy.strategy = 'standard';
+        return inputs;
+    }
+    const at = (r: ReturnType<typeof runCompleteSimulation>, age: number) =>
+        r.projections.find(p => p.age === age)!;
+
+    it('REGRESSION: an absent list changes nothing', () => {
+        const without = runCompleteSimulation(plan(), createSeededRNG(5));
+        const empty = plan();
+        empty.oneTimeIncome = [];
+        const withEmpty = runCompleteSimulation(empty, createSeededRNG(5));
+        expect(withEmpty.finalBalance).toBeCloseTo(without.finalBalance, 6);
+    });
+
+    it('lands only in its own year', () => {
+        const inputs = plan();
+        inputs.oneTimeIncome = [{ id: '1', description: 'Sell the house', amount: 300_000, age: 80 }];
+        const r = runCompleteSimulation(inputs, createSeededRNG(5));
+        expect(at(r, 79).income.oneTimeIncome).toBe(0);
+        expect(at(r, 80).income.oneTimeIncome).toBeCloseTo(300_000, 6);
+        expect(at(r, 81).income.oneTimeIncome).toBe(0);
+    });
+
+    it('is tax-free — a big inflow adds no tax', () => {
+        const withoutSale = runCompleteSimulation(plan(), createSeededRNG(5));
+        const inputs = plan();
+        inputs.oneTimeIncome = [{ id: '1', description: 'Sell the house', amount: 300_000, age: 80 }];
+        const withSale = runCompleteSimulation(inputs, createSeededRNG(5));
+
+        // By 80 the RMD exceeds the year's need in BOTH runs, so both withdraw exactly the
+        // same forced minimum — the sale changes nothing about the draw.
+        expect(at(withSale, 80).portfolio.withdrawals.total)
+            .toBeCloseTo(at(withoutSale, 80).portfolio.withdrawals.total, 6);
+
+        // Same income, same draw — so if the $300k proceeds were taxable the bill would
+        // jump. It doesn't move at all.
+        expect(at(withSale, 80).taxes.total).toBeCloseTo(at(withoutSale, 80).taxes.total, 6);
+    });
+
+    it('reinvests the surplus and leaves the plan better off', () => {
+        const inputs = plan();
+        inputs.oneTimeIncome = [{ id: '1', description: 'Sell the house', amount: 300_000, age: 80 }];
+        const withSale = runCompleteSimulation(inputs, createSeededRNG(5));
+        const withoutSale = runCompleteSimulation(plan(), createSeededRNG(5));
+        expect(withSale.finalBalance).toBeGreaterThan(withoutSale.finalBalance);
+        // Proceeds beyond the year's need go into the taxable account, not nowhere.
+        expect(at(withSale, 80).portfolio.balances.taxable)
+            .toBeGreaterThan(at(withoutSale, 80).portfolio.balances.taxable);
+    });
+
+    it('inflates from retirement like every other dollar figure', () => {
+        const inputs = plan();
+        inputs.simulation.generalInflationRate = 0.03;
+        inputs.oneTimeIncome = [{ id: '1', description: 'Sell the house', amount: 300_000, age: 80 }];
+        const r = runCompleteSimulation(inputs, createSeededRNG(5));
+        expect(at(r, 80).income.oneTimeIncome).toBeCloseTo(300_000 * 1.03 ** 15, 4);
+    });
+
+    it('still funds every year it claims to (the cash-flow identity holds)', () => {
+        const inputs = plan();
+        inputs.oneTimeIncome = [{ id: '1', description: 'Sell the house', amount: 300_000, age: 80 }];
+        const r = runCompleteSimulation(inputs, createSeededRNG(5));
+        for (const p of r.projections) {
+            const lhs = p.income.totalBeforeWithdrawals + p.portfolio.withdrawals.total;
+            const rhs = p.expenses.total + p.taxes.total + p.netCashFlow;
+            expect(lhs).toBeCloseTo(rhs, 4);
+        }
+    });
+
+    it('takes the RMD even in a year the sale covers everything', () => {
+        // Regression for a real bug this feature exposed: the surplus branch used to skip
+        // the RMD entirely. An RMD is a legal minimum keyed to age and balance — it does
+        // not care whether the money is needed — and skipping it understated that year's
+        // taxable income AND left the tax-deferred balance too high for every later year.
+        const inputs = plan();
+        inputs.phases.forEach(p => { p.annualSpending = 20_000; });
+        inputs.oneTimeIncome = [{ id: '1', description: 'Sell the house', amount: 900_000, age: 80 }];
+        const r = runCompleteSimulation(inputs, createSeededRNG(5));
+
+        const year = at(r, 80);
+        // Income massively exceeds spending, so this is the surplus branch.
+        expect(year.income.totalBeforeWithdrawals).toBeGreaterThan(year.expenses.total);
+        expect(year.portfolio.rmdAmount).toBeGreaterThan(0);
+        expect(year.portfolio.withdrawals.taxDeferred).toBeCloseTo(year.portfolio.rmdAmount, 6);
+        // And it is taxed rather than arriving free.
+        expect(year.taxes.total).toBeGreaterThan(0);
+    });
+});
+
 describe('runCompleteSimulation — long-term care stress test', () => {
     /** Single filer, retires 65, dies 90. Care occupies the final 3 years: 88, 89, 90. */
     function carePlan(ltc?: Partial<UserInputs['longTermCare']>): UserInputs {
