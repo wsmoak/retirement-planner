@@ -172,12 +172,21 @@ export function Screen1Plan() {
                     Enter what you expect to have saved <strong>when you retire</strong>, not what you have today.
                 </p>
                 {isMFJ && (
+                    <>
                     <p className="text-sm text-blue-800 mt-2">
                         For couples, the projection follows <strong>your</strong> age, and runs until
                         the <strong>later</strong> of the two life expectancies. Set each of you separately —
                         at the first death the plan switches to filing single, keeps only the larger
                         Social Security check, and drops to one set of healthcare costs.
                     </p>
+                    <p className="text-sm text-blue-800 mt-2">
+                        There is only <strong>one retirement date</strong>: the simulation starts when
+                        you retire. Your spouse&apos;s age here is their age <em>in that year</em>, which
+                        fixes the gap between you — it is <strong>not</strong> the age they stop working.
+                        If your spouse keeps working, model it on the Healthcare step (their premium can
+                        change when they retire) and enter their wages as part-time work.
+                    </p>
+                    </>
                 )}
             </div>
 
@@ -194,12 +203,12 @@ export function Screen1Plan() {
                     />
                     {isMFJ && (
                         <NumberField
-                            label="Spouse’s Age at Retirement"
+                            label="Spouse’s Age When You Retire"
                             value={personal.spouseAgeAtRetirement ?? DEFAULT_SPOUSE_AGE_AT_RETIREMENT}
                             onChange={(spouseAgeAtRetirement) => updatePersonal({ spouseAgeAtRetirement })}
                             min={40}
                             max={90}
-                            helperText="Their age the year you retire"
+                            helperText="Sets the age gap — not their own retirement age"
                         />
                     )}
                     <NumberField
