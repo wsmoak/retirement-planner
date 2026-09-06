@@ -96,6 +96,10 @@ RMD_DIVISORS = {
 # bigger means withdrawals did not cover the year.
 FUNDING_TOLERANCE = 1.0
 
+# Share of AGI below which medical expenses are not deductible (IRC 213(a)).
+# Mirrors MEDICAL_EXPENSE_AGI_FLOOR in src/lib/calculations/taxes.ts.
+MEDICAL_EXPENSE_AGI_FLOOR = 0.075
+
 # Tax-rule constants — must mirror TAX_RULES in src/lib/calculations/taxes.ts
 TAX_RULES = {
     "standard_deduction": {"single": 16100, "married_joint": 32200},   # 2026
@@ -194,6 +198,9 @@ class Plan:
         # reaches their own life expectancy — the old shared horizon, so such a plan verifies
         # exactly as it always did. Mirrors resolveSpouseLifeExpectancy in
         # src/lib/calculations/household.ts.
+        # Long-term care stress test. Absent on plans saved before the feature existed,
+        # and switched off by default, so either way the plan verifies as it always did.
+        self.ltc = inputs.get("longTermCare")
         self.life_expectancy = inputs["personal"]["lifeExpectancy"]
         if self.filing != "married_joint" or self.spouse_age_at_ret is None:
             self.spouse_life_expectancy = None
@@ -228,6 +235,77 @@ class Plan:
     # facts come from the helpers below, so the clock is never re-based.
     #
     # Convention: a person lives THROUGH their life-expectancy year and is gone after it.
+
+    # -- long-term care (mirrors src/lib/calculations/longTermCare.ts) --
+    #
+    # A stress test the user switches on, not a drawn risk. Care occupies the FINAL
+    # `durationYears` of a person's life, so it can never disagree with the death dates
+    # the survivor model already fixed.
+
+    LTC_FACILITY_TYPES = {"assisted_living", "nursing_home_semi", "nursing_home_private"}
+    LTC_SOLO_FACILITY_OFFSET = 0.60          # mirrors src/lib/constants.ts
+    SURVIVOR_SPENDING_FACTOR = 0.75          # mirrors src/lib/constants.ts
+
+    def _care_for(self, who: str) -> dict | None:
+        ltc = self.ltc
+        if not ltc or not ltc.get("enabled"):
+            return None
+        care = ltc.get(who)
+        if not care or care.get("careType") == "none" or care.get("durationYears", 0) <= 0:
+            return None
+        return care
+
+    def _in_care_window(self, person_age: int, death_age: int, care: dict) -> bool:
+        return death_age - care["durationYears"] < person_age <= death_age
+
+    def primary_in_care(self, age: int) -> bool:
+        care = self._care_for("primary")
+        if care is None or not self.primary_alive(age):
+            return False
+        return self._in_care_window(age, self.life_expectancy, care)
+
+    def spouse_in_care(self, age: int) -> bool:
+        care = self._care_for("spouse")
+        sp = self.spouse_age_notional(age)
+        if care is None or sp is None or self.spouse_life_expectancy is None:
+            return False
+        if self.deceased(age) == "spouse":
+            return False
+        return self._in_care_window(sp, self.spouse_life_expectancy, care)
+
+    def exp_long_term_care(self, age: int) -> float:
+        if not self.ltc or not self.ltc.get("enabled"):
+            return 0.0
+        infl = (1 + self.ltc.get("costInflationRate", 0.0)) ** max(0, self.yrs_from_retirement(age))
+        total = 0.0
+        if self.primary_in_care(age):
+            total += self.ltc["primary"]["annualCost"] * infl
+        if self.spouse_in_care(age):
+            total += self.ltc["spouse"]["annualCost"] * infl
+        return total
+
+    def ltc_living_offset(self, age: int) -> float:
+        """Share of living expenses a facility fee already covers. Home care displaces none."""
+        if not self.ltc or not self.ltc.get("enabled"):
+            return 0.0
+        p = self.primary_in_care(age) and \
+            self.ltc["primary"]["careType"] in self.LTC_FACILITY_TYPES
+        s = self.spouse_in_care(age) and \
+            self.ltc.get("spouse", {}).get("careType") in self.LTC_FACILITY_TYPES
+        in_facility = (1 if p else 0) + (1 if s else 0)
+        if in_facility == 0:
+            return 0.0
+        living = 2 if (self.deceased(age) is None and self.spouse_age(age) is not None) else 1
+        return self.LTC_SOLO_FACILITY_OFFSET if in_facility >= living \
+            else 1 - self.SURVIVOR_SPENDING_FACTOR
+
+    def medical_expenses(self, age: int, row: dict) -> float:
+        """Deductible medical expenses — care years only, mirroring yearlyProjection.ts."""
+        care = self.exp_long_term_care(age)
+        if care <= 0:
+            return 0.0
+        exp = row["expenses"]
+        return care + exp["healthcarePremiums"] + exp["healthcareOutOfPocket"]
 
     def spouse_age_notional(self, age: int) -> int | None:
         """Spouse's age ignoring death — kept so a survivor benefit can go on receiving COLA."""
@@ -337,7 +415,8 @@ class Plan:
         phase = self.get_phase(age)
         return (phase["annualSpending"]
                 * (1 + self.gen_infl) ** self.yrs_from_retirement(age)
-                * self.spending_factor(age))
+                * self.spending_factor(age)
+                * (1 - self.ltc_living_offset(age)))
 
     # Healthcare is per-person: pre-Medicare inflates by calendar years since retirement
     # (same for both spouses — they retire the same year); Medicare inflates from each
@@ -423,6 +502,20 @@ class Plan:
             ded += TAX_RULES["senior_bonus"] * seniors
         return ded
 
+    def deduction(self, age: int, year: int, medical: float, agi: float) -> float:
+        """The deduction actually taken: the greater of the standard one and an itemized
+        medical deduction (IRC 213(a), 7.5% of AGI floor).
+
+        A long-term-care year is the one year a retiree realistically itemizes, and the
+        amounts dwarf the standard deduction — so charging tax on the withdrawals that
+        fund the care without it would badly overstate the bill. Mirrors
+        `calculateDeduction` in src/lib/calculations/taxes.ts.
+        """
+        standard = self.standard_deduction(age, year)
+        if medical <= 0:
+            return standard
+        return max(standard, max(0.0, medical - MEDICAL_EXPENSE_AGI_FLOOR * max(0.0, agi)))
+
     def expected_income_tax(self, row: dict) -> float:
         """Expected onFixedIncome + onWithdrawals for a projection row."""
         inc = row["income"]
@@ -440,7 +533,12 @@ class Plan:
         fixed_base = taxable_ss + inc["pensions"] + inc["partTimeWork"] + inc["rentalIncome"]
         wd_base = ordinary_wd + brokerage_gain
 
-        ded = self.standard_deduction(int(row["age"]), int(row["year"]))
+        ded = self.deduction(
+            int(row["age"]),
+            int(row["year"]),
+            self.medical_expenses(int(row["age"]), row),
+            fixed_base + wd_base,
+        )
         fixed_taxable = max(0.0, fixed_base - ded)
         ded_left = max(0.0, ded - fixed_base)
         wd_taxable = max(0.0, wd_base - ded_left)
@@ -723,6 +821,7 @@ def verify(bundle: dict, percentile: str, tol: float) -> int:
 
         # Expenses
         chk("Living Expenses", exp["living"], plan.exp_living(age), issues)
+        chk("Long-Term Care", exp.get("longTermCare", 0.0), plan.exp_long_term_care(age), issues)
         chk("Healthcare Premiums", exp["healthcarePremiums"], plan.exp_hc_premiums(age), issues)
         chk("Healthcare Out-of-Pocket", exp["healthcareOutOfPocket"], plan.exp_hc_oop(age), issues)
 
@@ -732,9 +831,11 @@ def verify(bundle: dict, percentile: str, tol: float) -> int:
             inc["socialSecurity"] + inc["pensions"] + inc["partTimeWork"] + inc["rentalIncome"],
             issues)
 
-        chk("Total Expenses = Living + Premiums + OOP + One-Time",
+        # `longTermCare` is absent from bundles exported before the care stress test existed.
+        chk("Total Expenses = Living + Premiums + OOP + One-Time + Long-Term Care",
             exp["total"],
-            exp["living"] + exp["healthcarePremiums"] + exp["healthcareOutOfPocket"] + exp["oneTimeExpenses"],
+            exp["living"] + exp["healthcarePremiums"] + exp["healthcareOutOfPocket"]
+            + exp["oneTimeExpenses"] + exp.get("longTermCare", 0.0),
             issues)
 
         # `stateTax` is absent from bundles exported before state tax was modeled.

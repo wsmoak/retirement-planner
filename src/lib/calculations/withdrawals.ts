@@ -3,7 +3,7 @@
 import { calculateRMD } from './rmd';
 import {
     calculateTaxFreeTaxDeferredRoom,
-    calculateStandardDeduction,
+    calculateDeduction,
     calculateTaxableSocialSecurity,
     type FilingStatus,
 } from './taxes';
@@ -141,7 +141,14 @@ export function executeWithdrawals(
     spouseAge?: number,
     rmdAge: number = currentAge,
     rmdStartAge: number = 73,
-    stateTaxOnDraws: (breakdown: StateDrawBreakdown) => number = () => 0
+    stateTaxOnDraws: (breakdown: StateDrawBreakdown) => number = () => 0,
+    /**
+     * Deductible medical expenses for the year — long-term care only (see
+     * `calculateDeduction`). Non-zero makes the deduction a FUNCTION of the draw
+     * rather than a constant, because the 7.5% floor is measured against an AGI the
+     * draw itself inflates.
+     */
+    medicalExpenses: number = 0
 ): WithdrawalResult {
     const balances = { ...currentBalances };
 
@@ -154,29 +161,44 @@ export function executeWithdrawals(
     // taxable base. Under-withdrawal is the harmful direction: the year then spends money it
     // never took out, `netCashFlow` goes negative, and depletion risk is understated.
     const fixedOrdinary = income.pensions + income.partTimeWork + income.rentalIncome;
-    const deduction = calculateStandardDeduction(
-        currentAge,
-        year,
-        filingStatus,
-        deductionInflationFactor,
-        true,
-        spouseAge
-    );
+
+    /** AGI once `draws` of withdrawal income sits on top of fixed income. */
+    const agiWith = (draws: number): number =>
+        calculateTaxableSocialSecurity(
+            income.socialSecurity,
+            fixedOrdinary + draws,
+            filingStatus,
+            socialSecurityTaxablePercentage
+        ) +
+        fixedOrdinary +
+        draws;
+
+    /**
+     * The deduction as a function of the draw.
+     *
+     * Constant in an ordinary year (the standard deduction). In a long-term-care year
+     * it bends: the itemized medical deduction is `medical − 7.5% × AGI`, and drawing
+     * from a tax-deferred account to pay for the care raises AGI, which raises the
+     * floor and shrinks the deduction. Each extra dollar withdrawn therefore adds
+     * $1.075 of taxable income rather than $1 — still monotonic, so the gross-up
+     * solve below converges exactly as before, but the curve is steeper and a flat
+     * rate would understate it.
+     */
+    const deductionWith = (draws: number): number =>
+        calculateDeduction(
+            currentAge,
+            year,
+            filingStatus,
+            deductionInflationFactor,
+            true,
+            spouseAge,
+            medicalExpenses,
+            agiWith(draws)
+        );
 
     /** Federal taxable income once `draws` of withdrawal income sits on top of fixed income. */
     const federalTaxableWith = (draws: number): number =>
-        Math.max(
-            0,
-            calculateTaxableSocialSecurity(
-                income.socialSecurity,
-                fixedOrdinary + draws,
-                filingStatus,
-                socialSecurityTaxablePercentage
-            ) +
-                fixedOrdinary +
-                draws -
-                deduction
-        );
+        Math.max(0, agiWith(draws) - deductionWith(draws));
 
     const federalTaxableBeforeDraws = federalTaxableWith(0);
 

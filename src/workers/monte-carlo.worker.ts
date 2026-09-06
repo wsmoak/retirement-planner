@@ -73,6 +73,20 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
     try {
         const results = runMonteCarloSimulation(message.inputs, message.numberOfRuns);
 
+        // With a care scenario active, run the SAME plan again without it. Long-term care
+        // is a stress test: the deliverable is the delta against a clean baseline, not a
+        // single number with the risk silently blended in. Costs one extra pass — a few
+        // seconds — and only when the user has actually switched the scenario on.
+        if (message.inputs.longTermCare?.enabled) {
+            results.baselineWithoutCare = runMonteCarloSimulation(
+                {
+                    ...message.inputs,
+                    longTermCare: { ...message.inputs.longTermCare, enabled: false },
+                },
+                message.numberOfRuns
+            );
+        }
+
         const completeMessage: CompleteMessage = {
             type: 'COMPLETE',
             results,        // → Back to ResultsContext

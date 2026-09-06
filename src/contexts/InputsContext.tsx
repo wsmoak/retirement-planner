@@ -16,8 +16,13 @@ import type {
     SimulationSettings,
     PreMedicareCosts,
     MedicareCosts,
+    LongTermCareScenario,
 } from '@/types';
-import { DEFAULT_VALUES, DEFAULT_SPOUSE_SOCIAL_SECURITY } from '@/lib/constants';
+import {
+    DEFAULT_VALUES,
+    DEFAULT_SPOUSE_SOCIAL_SECURITY,
+    DEFAULT_LONG_TERM_CARE,
+} from '@/lib/constants';
 
 interface InputsContextType {
     inputs: UserInputs;
@@ -42,6 +47,8 @@ interface InputsContextType {
     updateTax: (data: Partial<TaxSettings>) => void;
     updateWithdrawalStrategy: (data: Partial<UserInputs['withdrawalStrategy']>) => void;
     updateSimulation: (data: Partial<SimulationSettings>) => void;
+    updateLongTermCare: (data: Partial<LongTermCareScenario>) => void;
+    setLongTermCare: (scenario: LongTermCareScenario) => void;
     setMode: (mode: 'basic' | 'advanced') => void;
     resetToDefaults: () => void;
     loadFromScenario: (scenarioId: string, scenarioName: string, scenarioInputs: UserInputs) => void;  // New function to load scenario inputs
@@ -226,6 +233,20 @@ export function InputsProvider({ children }: { children: ReactNode }) {
         }));
     }, []);
 
+    const updateLongTermCare = useCallback((data: Partial<LongTermCareScenario>) => {
+        setInputs((prev: UserInputs) => ({
+            ...prev,
+            // A scenario saved before this feature existed has no value at all, so fall
+            // back to the (switched-off) default rather than spreading undefined.
+            longTermCare: { ...(prev.longTermCare ?? DEFAULT_LONG_TERM_CARE), ...data },
+        }));
+    }, []);
+
+    /** Replaces the whole scenario — used by the presets. */
+    const setLongTermCare = useCallback((scenario: LongTermCareScenario) => {
+        setInputs((prev: UserInputs) => ({ ...prev, longTermCare: scenario }));
+    }, []);
+
     const setMode = useCallback((mode: 'basic' | 'advanced') => {
         setInputs((prev: UserInputs) => ({ ...prev, mode }));
     }, []);
@@ -267,6 +288,8 @@ export function InputsProvider({ children }: { children: ReactNode }) {
                 updateTax,
                 updateWithdrawalStrategy,
                 updateSimulation,
+                updateLongTermCare,
+                setLongTermCare,
                 setMode,
                 resetToDefaults,
                 loadFromScenario,

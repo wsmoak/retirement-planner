@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { AlertCircle, Activity, GitCompare, Gauge, LineChart, BarChart3, Table2, ShieldCheck } from 'lucide-react'
 import { SummaryDashboard } from '@/components/results/SummaryDashboard'
+import { LongTermCareImpact } from '@/components/results/LongTermCareImpact'
 import MonteCarloChart from '@/components/results/MonteCarloChart'
 import CashFlowChart from '@/components/results/CashFlowChart'
 import AnnualTable from '@/components/results/AnnualTable'
@@ -210,6 +211,9 @@ export default function ResultsPage() {
                     </TabsList>
 
                     <TabsContent value="summary" className="space-y-4">
+                        {/* Above the dashboard: when a care scenario is on, the comparison IS
+                            the headline, and the unstressed number stays visible beside it. */}
+                        <LongTermCareImpact results={results} inputs={inputs} />
                         <SummaryDashboard results={results} inputs={inputs} />
                     </TabsContent>
 

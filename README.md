@@ -54,12 +54,17 @@ deduction-floor filling (a third, gap-year Roth conversions, is scaffolded but d
 **per-spouse life expectancy and the survivor's penalty** — each spouse gets their own planning
 age, the plan runs to the later of the two, and at the first death the household switches to
 filing single, keeps only the larger Social Security benefit, drops to one set of healthcare
-costs, and steps living expenses down to 75% of the couple's.
+costs, and steps living expenses down to 75% of the couple's ·
+**long-term care as a stress test** — an optional care episode per person (assisted living, nursing
+home, or care at home) anchored to the final years of that person's life, priced against the plan
+and reported as a **delta versus a clean baseline** rather than folded into the headline number,
+including the medical-expense deduction that a care year triggers.
 
 **What it deliberately does *not* model** — pre-retirement accumulation · **state income tax for
 the other 38 states** (fold your rate into the marginal rate yourself) ·
-ACA subsidies for pre-Medicare coverage · **long-term care** (often the largest single retirement
-risk) · per-spouse accounts (couples' balances are pooled) · spousal and survivor Social Security
+ACA subsidies for pre-Medicare coverage · **Medicaid spend-down** and **home equity** — the two
+things that most often pay for long-term care in reality ·
+per-spouse accounts (couples' balances are pooled) · spousal and survivor Social Security
 rules beyond taking the larger own-record benefit · the spouse's own earned income ·
 variable inflation · dynamic spending guardrails · fat-tail crashes · fees and transaction costs ·
 home equity and mortgages · **non-income state and local taxes** (sales, property, excise) — a

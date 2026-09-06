@@ -51,6 +51,7 @@ function proj(
             healthcarePremiums: overrides.healthcarePremiums ?? 0,
             healthcareOutOfPocket: overrides.healthcareOutOfPocket ?? 0,
             oneTimeExpenses: overrides.oneTimeExpenses ?? 0,
+            longTermCare: 0,
             total: 0,
         },
         taxes: {

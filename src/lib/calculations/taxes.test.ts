@@ -5,8 +5,10 @@ import {
     TAX_RULES,
     calculateTaxableSocialSecurity,
     calculateStandardDeduction,
+    calculateDeduction,
     calculateTaxFreeTaxDeferredRoom,
     calculateTotalTaxes,
+    MEDICAL_EXPENSE_AGI_FLOOR,
 } from './taxes';
 
 describe('calculateTaxableSocialSecurity (IRS provisional-income formula)', () => {
@@ -191,5 +193,39 @@ describe('calculateTaxFreeTaxDeferredRoom (tax-smart fill)', () => {
         const room = calculateTaxFreeTaxDeferredRoom(30_000, 0, 0.85, 65, 2026, 1, 'single');
         expect(room).toBeCloseTo(19_351, -1);
         expect(room).toBeLessThan(24_150); // strictly less than the no-SS room
+    });
+});
+
+describe('calculateDeduction — itemized medical vs the standard floor', () => {
+    const args = [70, 2030, 'single' as const, 1, true, undefined] as const;
+    const standard = calculateStandardDeduction(...args);
+
+    it('REGRESSION: with no medical expenses it IS the standard deduction', () => {
+        expect(calculateDeduction(...args)).toBe(standard);
+        expect(calculateDeduction(...args, 0, 200_000)).toBe(standard);
+    });
+
+    it('still takes the standard deduction when medical costs do not beat it', () => {
+        // $12k of medical against $100k AGI clears nothing after the 7.5% floor.
+        expect(calculateDeduction(...args, 12_000, 100_000)).toBe(standard);
+    });
+
+    it('itemizes a nursing-home year — the case this exists for', () => {
+        // $120k of care against $150k AGI → 120,000 − 11,250 = 108,750.
+        const d = calculateDeduction(...args, 120_000, 150_000);
+        expect(d).toBeCloseTo(120_000 - MEDICAL_EXPENSE_AGI_FLOOR * 150_000, 6);
+        expect(d).toBeGreaterThan(standard * 5);
+    });
+
+    it('shrinks as AGI rises, because the floor is a share of AGI', () => {
+        const low = calculateDeduction(...args, 120_000, 150_000);
+        const high = calculateDeduction(...args, 120_000, 250_000);
+        expect(high).toBeLessThan(low);
+        // Each extra dollar of AGI costs 7.5 cents of deduction.
+        expect(low - high).toBeCloseTo(MEDICAL_EXPENSE_AGI_FLOOR * 100_000, 6);
+    });
+
+    it('never goes below the standard deduction', () => {
+        expect(calculateDeduction(...args, 5_000, 1_000_000)).toBe(standard);
     });
 });

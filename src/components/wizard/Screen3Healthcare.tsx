@@ -8,6 +8,7 @@ import { CurrencyField } from '@/components/common/CurrencyField';
 import { HelpPopover } from '@/components/common/HelpPopover';
 import { InlineGuidance } from '@/components/common/InlineGuidance';
 import { ScopeBadge } from '@/components/common/ScopeBadge';
+import { LongTermCareSection } from '@/components/wizard/LongTermCareSection';
 
 export function Screen3Healthcare() {
     const { inputs, updateHealthcare } = useInputs();
@@ -322,7 +323,8 @@ export function Screen3Healthcare() {
                                 <li>Chronic condition management</li>
                             </ul>
                             <p className="mt-2 text-xs text-gray-600">
-                                💡 These estimates do not include long-term care costs
+                                💡 These estimates cover routine healthcare only. Long-term care is
+                                separate — see the stress test at the bottom of this step.
                             </p>
                         </HelpPopover>
                     </h4>
@@ -386,25 +388,7 @@ export function Screen3Healthcare() {
                 </div>
             </div>
 
-            {/* Warning about Long-Term Care */}
-            <CollapsibleHelpPanel
-                title="Important: Long-Term Care NOT Modeled"
-                variant="warning"
-            >
-                <p>
-                    This simulator does <strong>not</strong> include long-term care costs, which can be substantial:
-                </p>
-                <ul className="space-y-1 ml-4 list-disc">
-                    <li>Home health aide: $30-50/hour ($50,000-100,000/year for full-time)</li>
-                    <li>Assisted living: $50,000-70,000/year average</li>
-                    <li>Nursing home: $100,000-150,000/year average</li>
-                    <li>Memory care: $70,000-100,000/year</li>
-                </ul>
-                <p>
-                    Consider: Long-term care insurance, Medicaid planning, or setting
-                    aside additional funds for potential care needs.
-                </p>
-            </CollapsibleHelpPanel>
+            <LongTermCareSection />
         </div>
     );
 }

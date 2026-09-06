@@ -16,6 +16,7 @@ import type {
     PreMedicareCosts,
     MedicareCosts,
 } from '@/types';
+import { NO_CARE, type CareStatus } from '@/lib/calculations/longTermCare';
 
 /**
  * Medicare eligibility age.
@@ -440,12 +441,19 @@ export function calculateYearlyExpenses(
      */
     spendingFactor: number = 1,
     /** The living person the first healthcare track insures. Defaults to the primary. */
-    filerAge: number = currentAge
+    filerAge: number = currentAge,
+    /**
+     * Long-term care for the year. Its cost is a separate expense line (not folded into
+     * healthcare, so the Annual Breakdown can show it), and its `livingExpenseOffset`
+     * removes the housing and food a facility fee already covers.
+     */
+    care: CareStatus = NO_CARE
 ): {
     living: number;
     healthcarePremiums: number;
     healthcareOutOfPocket: number;
     oneTimeExpenses: number;
+    longTermCare: number;
     total: number;
 } {
     const living = calculateLivingExpenses(
@@ -453,7 +461,7 @@ export function calculateYearlyExpenses(
         retirementAge,
         phases,
         generalInflationRate
-    ) * spendingFactor;
+    ) * spendingFactor * (1 - care.livingExpenseOffset);
 
     const healthcare = calculateHealthcareCosts(
         currentAge,
@@ -478,6 +486,7 @@ export function calculateYearlyExpenses(
         healthcarePremiums: healthcare.premiums,
         healthcareOutOfPocket: healthcare.outOfPocket,
         oneTimeExpenses: oneTime,
-        total: living + healthcare.total + oneTime,
+        longTermCare: care.annualCost,
+        total: living + healthcare.total + oneTime + care.annualCost,
     };
 }

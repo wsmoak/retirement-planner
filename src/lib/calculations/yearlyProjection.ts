@@ -16,6 +16,7 @@ import { RMD_START_AGE } from '@/lib/calculations/rmd';
 import { computeStateTax, type StateTaxInputs } from '@/lib/calculations/stateTax';
 import { getStateTaxRules } from '@/lib/calculations/stateTaxRules';
 import { resolveHousehold, simulationHorizon } from '@/lib/calculations/household';
+import { resolveCare } from '@/lib/calculations/longTermCare';
 
 export interface YearlyProjection {
     age: number;
@@ -37,6 +38,12 @@ export interface YearlyProjection {
         healthcarePremiums: number;
         healthcareOutOfPocket: number;
         oneTimeExpenses: number;
+        /**
+         * Long-term care cost for the year. Kept as its own line rather than folded into
+         * healthcare so the Annual Breakdown can show the shock, and so the verification
+         * bundle carries it. 0 whenever no care scenario is active.
+         */
+        longTermCare: number;
         total: number;
     };
 
@@ -105,10 +112,23 @@ export function calculateYearlyProjection(
     const household = resolveHousehold(currentAge, personal);
     const { filingStatus, filerAge, spouseAge, rmdAge, deceased } = household;
 
+    const yearsSinceRetirement = Math.max(0, currentAge - personal.retirementAge);
     const deductionInflationFactor = Math.pow(
         1 + simulation.generalInflationRate,
-        Math.max(0, currentAge - personal.retirementAge)
+        yearsSinceRetirement
     );
+
+    // Long-term care for this year. A stress-test overlay, not a drawn risk — see
+    // longTermCare.ts. `NO_CARE` when the scenario is absent or switched off, which is
+    // what makes a plan without it compute exactly as it did before the feature.
+    const care = resolveCare(
+        currentAge,
+        personal,
+        household,
+        inputs.longTermCare,
+        yearsSinceRetirement
+    );
+
 
     // STEP 2: Calculate income
     const incomeResult = calculateYearlyIncome(
@@ -137,8 +157,19 @@ export function calculateYearlyProjection(
         simulation.healthcareInflationRate,
         spouseAge,
         household.spendingFactor,
-        filerAge
+        filerAge,
+        care
     );
+
+    // Care is a deductible medical expense, and a care year is the one year a retiree is
+    // realistically going to itemize. Medicare premiums and out-of-pocket costs ride along
+    // because they are deductible too — but ONLY in a care year, so that a plan without
+    // care keeps taking the standard deduction and computes exactly as it did before.
+    const medicalExpenses = care.anyCare
+        ? care.annualCost +
+          expensesResult.healthcarePremiums +
+          expensesResult.healthcareOutOfPocket
+        : 0;
 
     // STEP 4: Calculate initial taxes on fixed income
     const initialTaxOnIncome = calculateTaxOnFixedIncome(
@@ -157,7 +188,8 @@ export function calculateYearlyProjection(
         deductionInflationFactor,
         filingStatus,
         true,
-        spouseAge
+        spouseAge,
+        medicalExpenses
     );
 
     // State tax is only computed when the user opted in (or a new scenario defaulted in);
@@ -207,7 +239,12 @@ export function calculateYearlyProjection(
             filerAge,
             cashFlowGap,
             currentBalances,
-            expensesResult.healthcarePremiums + expensesResult.healthcareOutOfPocket,  // total healthcare cost
+            // Long-term care is a qualified medical expense, so it belongs in the HSA-
+            // eligible total: the HSA pays it tax-free before any taxable account is
+            // touched, which makes the HSA the best source for exactly this kind of shock.
+            expensesResult.healthcarePremiums +
+                expensesResult.healthcareOutOfPocket +
+                expensesResult.longTermCare,
             accounts.hsa.allowNonMedicalAfter65,  // HSA non-medical withdrawal policy
             inputs.withdrawalStrategy.priorityOrder,
             {
@@ -252,7 +289,8 @@ export function calculateYearlyProjection(
                     taxDeferredWithdrawals: breakdown.taxDeferred,
                     brokerageGains: breakdown.brokerageGains,
                     hsaNonMedicalWithdrawals: breakdown.hsaNonMedical,
-                }).tax - initialStateTax
+                }).tax - initialStateTax,
+            medicalExpenses
         );
 
         // Deduct withdrawals from current balances
@@ -307,7 +345,8 @@ export function calculateYearlyProjection(
         hsaNonMedicalWithdrawal,
         filingStatus,
         true,
-        spouseAge
+        spouseAge,
+        medicalExpenses
     );
 
     // State income tax on the year's full picture, now that withdrawals are known.
@@ -406,6 +445,7 @@ export function calculateYearlyProjection(
             healthcarePremiums: expensesResult.healthcarePremiums,
             healthcareOutOfPocket: expensesResult.healthcareOutOfPocket,
             oneTimeExpenses: expensesResult.oneTimeExpenses,
+            longTermCare: expensesResult.longTermCare,
             total: expensesResult.total,
         },
 

@@ -97,6 +97,52 @@ export interface PreMedicareCosts {
     annualOutOfPocket: number;
 }
 
+/**
+ * Long-term care settings. Modeled as a STRESS TEST, not a probability: the user
+ * chooses a scenario and the app reports it as a delta against a clean baseline.
+ *
+ * Deliberately not stochastic. Incidence and duration distributions are far weaker
+ * than the market-return data (survey-based, definition-dependent, shifting as home
+ * care substitutes for facilities), care need correlates with mortality and with the
+ * spouse's own health in ways this engine does not model, and a draw would override
+ * what the user actually knows about their family history. See
+ * ~/Ideas/retirement-planner-long-term-care.md.
+ */
+export type CareType =
+    | 'none'
+    | 'adult_day'
+    | 'home_health'
+    | 'assisted_living'
+    | 'nursing_home_semi'
+    | 'nursing_home_private';
+
+/** One person's care episode. */
+export interface PersonCare {
+    careType: CareType;
+    /**
+     * Years of care, occupying the FINAL N years of that person's life.
+     *
+     * Anchored to death rather than to an absolute age because care almost always
+     * precedes death. Keying it to "starting at 85" produces incoherent runs — care
+     * ending years before death for no reason, or starting after the person is gone.
+     * Anchoring also makes it compose with the survivor transition for free: care
+     * stops exactly when they die.
+     */
+    durationYears: number;
+    /** Annual cost in retirement-year dollars, before LTC inflation. */
+    annualCost: number;
+}
+
+export interface LongTermCareScenario {
+    /** Master switch. When false the plan runs exactly as if this feature did not exist. */
+    enabled: boolean;
+    primary: PersonCare;
+    /** MFJ only. */
+    spouse?: PersonCare;
+    /** LTC has historically outpaced general inflation, so it gets its own rate. */
+    costInflationRate: number;
+}
+
 export interface MedicareCosts {
     partBStandardPremium: number;
     partDPremium: number;
@@ -181,6 +227,11 @@ export interface UserInputs {
     };
     tax: TaxSettings;
     simulation: SimulationSettings;
+    /**
+     * Optional so scenarios saved before long-term care existed stay valid — a missing
+     * value reads as "no care scenario", which reproduces the old numbers exactly.
+     */
+    longTermCare?: LongTermCareScenario;
     mode: 'basic' | 'advanced';
 }
 
@@ -220,6 +271,18 @@ export interface SimulationResults {
         p50: SelectedRun;
         p90: SelectedRun;
     };
+
+    /**
+     * The SAME plan with the long-term-care scenario switched off.
+     *
+     * Present only when a care scenario is active. Long-term care is presented as a
+     * stress test whose product is the comparison — "94% → 61%, costing $412k" — not a
+     * single blended number, so the baseline has to survive alongside the stressed run.
+     *
+     * Dropped by `slimResults` when a scenario is saved (it is recomputed on the next
+     * run), and never written into the verification bundle.
+     */
+    baselineWithoutCare?: SimulationResults;
 
     // Optional fields not needed for storage/comparison
     sampleRuns?: Array<{

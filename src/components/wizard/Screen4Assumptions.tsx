@@ -167,7 +167,7 @@ export function Screen4Assumptions() {
                 <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mt-3 flex gap-2">
                     <Info className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                     <p className="text-sm text-yellow-800">
-                        The tool models the standard deduction (incl. age-65 and 2025–2028 senior bonus) and the IRS SS provisional-income formula, then applies this marginal rate. It does <strong>not</strong> model full brackets, itemized deductions, the 0% LTCG bracket, or state-specific rules.
+                        The tool models the standard deduction (incl. age-65 and 2025–2028 senior bonus) and the IRS SS provisional-income formula, then applies this marginal rate. It does <strong>not</strong> model full brackets, the 0% LTCG bracket, or state-specific rules. The only itemized deduction modeled is the medical-expense deduction in a long-term-care year.
                     </p>
                 </div>
             </div>

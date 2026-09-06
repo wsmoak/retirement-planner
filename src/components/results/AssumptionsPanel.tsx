@@ -214,7 +214,19 @@ export default function AssumptionsPanel({ inputs }: AssumptionsPanelProps) {
                             </li>
                             <li>Out-of-pocket costs are estimates and vary significantly by individual health</li>
                             <li>
-                                <strong className="text-red-700">Long-term care NOT modeled</strong> (nursing homes, assisted living: $50K-$150K+/year)
+                                <strong>Long-term care is a stress test you choose</strong>, not a
+                                probability the tool estimates. When switched on, the care episode
+                                occupies the final years of that person&apos;s life, displaces part
+                                of the household budget for a facility stay, and is deducted as a
+                                medical expense above 7.5% of income. When off, it costs nothing —
+                                which is an assumption, not a finding.
+                            </li>
+                            <li>
+                                <strong className="text-red-700">Medicaid is not modeled.</strong>{' '}
+                                Medicare covers no custodial care, but Medicaid does once assets are
+                                spent down, and it protects part of a surviving spouse&apos;s assets
+                                and income. Running out here means a transition this tool does not
+                                model, not destitution.
                             </li>
                             <li>Does not account for catastrophic health events or disability</li>
                             <li>ACA subsidies for pre-Medicare coverage not calculated</li>
@@ -297,7 +309,11 @@ export default function AssumptionsPanel({ inputs }: AssumptionsPanelProps) {
                     <div>
                         <h4 className="font-semibold mb-2">Life Events:</h4>
                         <ul className="list-disc list-inside space-y-1">
-                            <li><strong>Long-term care costs</strong> (major expense!)</li>
+                            <li>
+                                <strong>Medicaid spend-down and home equity</strong> — the two things
+                                that most often pay for long-term care in real life. Care itself is
+                                modeled as an optional stress test.
+                            </li>
                             <li>Probabilistic mortality (the survivor's penalty <em>is</em> modeled, but from two fixed ages you choose — not a distribution)</li>
                             <li>Inheritance or windfalls</li>
                             <li>Major medical events</li>

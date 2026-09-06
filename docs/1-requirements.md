@@ -256,16 +256,22 @@ Honest disclosure sets realistic expectations. Displayed prominently on results:
   (e.g. Georgia's frozen contingent rate cuts, Washington's unmodeled capital-gains excise tax,
   New York's unmodeled NYC/Yonkers local tax); for every other state the panel says plainly that
   state tax is **not** modeled and the user's marginal rate is carrying it.
-- **Healthcare:** Medicare base + inflation; out-of-pocket estimated; **long-term care NOT
-  modeled** ($50k–150k+/yr); no ACA subsidies; HSA covers healthcare first.
+- **Healthcare:** Medicare base + inflation; out-of-pocket estimated; no ACA subsidies; HSA covers
+  healthcare first.
+- **Long-term care:** modeled as an opt-in **stress test**, not a probability — the user picks a
+  care episode per person and the app reports the result as a delta against a baseline with care
+  switched off. Anchored to the final years of that person's life; a facility stay displaces part
+  of the household budget; the cost is deducted as a medical expense above 7.5% of AGI (the only
+  itemized deduction in the model). **Medicaid spend-down and home equity are NOT modeled**, so a
+  care scenario is pessimistic in that respect.
 - **Spending:** constant within each phase; no market-based or dynamic adjustments.
 - **Mortality / couples:** fixed life expectancies (no distribution), but **per spouse** for MFJ —
   the plan runs to the later death and **the survivor's penalty is modeled** (MFJ→single, the
   smaller SS check stops, one healthcare track, living expenses step down to 75%). What remains
   deterministic is *when* each death happens (see [`4-married-filing-jointly.md`](4-married-filing-jointly.md)).
-- **Not modeled:** pre-retirement accumulation, long-term care, actual brackets, dynamic
-  spending, estate planning, inflation variability, ACA subsidies, Roth conversions, and state
-  tax outside the thirteen modeled states.
+- **Not modeled:** pre-retirement accumulation, Medicaid spend-down, home equity, long-term care
+  insurance, actual brackets, dynamic spending, estate planning, inflation variability, ACA
+  subsidies, Roth conversions, and state tax outside the thirteen modeled states.
 
 **Disclaimer:** educational projections only; not financial, tax, or legal advice.
 
@@ -393,7 +399,9 @@ Roughly in priority order (living list; not commitments):
 4. **Asset allocation / correlations per account** — stocks/bonds mix and diversification.
 5. **Dynamic spending / guardrails** (e.g. Guyton-Klinger).
 6. **ACA subsidy modeling** for pre-65 healthcare.
-7. **Long-term care modeling** (self-funding or LTC insurance).
+7. **Long-term care insurance** (traditional and hybrid policies) — the care cost itself now ships
+   as a stress test; crediting a policy against it is the next step. Medicaid spend-down and home
+   equity remain deliberately unmodeled.
 8. **Fuller tax modeling** — actual federal brackets, 0/15/20% LTCG.
 9. **Different retirement dates, separate per-spouse accounts, spousal SS top-up, spouse's own
    earned income.** (Per-spouse life expectancy has shipped.)
@@ -410,7 +418,8 @@ one market shock; inflation is constant; spending is constant within a phase.
 **Scope constraints:** US-only; single or MFJ (couples modeled per [`4-married-filing-jointly.md`](4-married-filing-jointly.md),
 including the survivor's penalty); no pre-retirement accumulation; fixed life expectancies
 (per spouse, but not probabilistic); simplified tax
-(marginal rate + deduction floor, no full brackets); no long-term care; state tax for thirteen
+(marginal rate + deduction floor, no full brackets, medical-expense itemizing only in a care year);
+long-term care as an opt-in stress test with no Medicaid or home equity; state tax for thirteen
 states only (§2.1); no ACA subsidies; no Roth conversions yet; no dynamic spending. Client-side only;
 localStorage is unencrypted ("don't use on shared computers"); no SSN/account numbers/names required.
 

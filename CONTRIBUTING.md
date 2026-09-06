@@ -36,7 +36,8 @@ Deliberately **out of scope**:
 - **Individualized advice.** The tool shows outcomes; it doesn't tell people what to do.
 
 **Known gaps that are fair game** (all currently disclosed in the app's Disclosures tab):
-state income tax, ACA subsidies for pre-Medicare coverage, long-term care costs, probabilistic
+state income tax, ACA subsidies for pre-Medicare coverage, Medicaid spend-down and home equity
+(long-term care itself is now modeled as a stress test), long-term care insurance, probabilistic
 mortality for couples (the survivor's penalty itself is now modeled), per-spouse (non-pooled)
 accounts, variable inflation, dynamic spending guardrails, and fat-tail return modeling. Several
 of these have design notes in `docs/`.

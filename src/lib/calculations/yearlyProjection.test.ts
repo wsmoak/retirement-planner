@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { runCompleteSimulation } from './yearlyProjection';
 import { createSeededRNG } from './random';
-import { DEFAULT_VALUES, SURVIVOR_SPENDING_FACTOR } from '../constants';
+import { DEFAULT_VALUES, SURVIVOR_SPENDING_FACTOR, LTC_SOLO_FACILITY_OFFSET } from '../constants';
 import type { UserInputs } from '@/types';
 
 /** Deep-ish clone of the defaults with per-test overrides. */
@@ -529,6 +529,137 @@ describe('state tax', () => {
             const rhs = p.expenses.total + p.taxes.total + p.netCashFlow;
             expect(lhs).toBeCloseTo(rhs, 4);
         }
+    });
+});
+
+describe('runCompleteSimulation — long-term care stress test', () => {
+    /** Single filer, retires 65, dies 90. Care occupies the final 3 years: 88, 89, 90. */
+    function carePlan(ltc?: Partial<UserInputs['longTermCare']>): UserInputs {
+        const inputs = makeInputs();
+        inputs.personal.retirementAge = 65;
+        inputs.personal.lifeExpectancy = 90;
+        inputs.personal.filingStatus = 'single';
+        inputs.phases = [
+            { name: 'go_go', startAge: 65, endAge: 74, annualSpending: 60_000 },
+            { name: 'slow_go', startAge: 75, endAge: 85, annualSpending: 52_000 },
+            { name: 'no_go', startAge: 86, endAge: 90, annualSpending: 46_000 },
+        ];
+        inputs.accounts.taxDeferred.balanceAtRetirement = 1_500_000;
+        inputs.accounts.roth.balanceAtRetirement = 300_000;
+        inputs.accounts.taxable.balanceAtRetirement = 300_000;
+        inputs.accounts.hsa.balanceAtRetirement = 0;
+        inputs.income.socialSecurity.monthlyBenefitAtFRA = 2_600;
+        inputs.income.socialSecurity.claimingAge = 67;
+        inputs.simulation.returnStdDeviation = 0;
+        inputs.withdrawalStrategy.strategy = 'standard';
+        inputs.longTermCare = {
+            enabled: true,
+            primary: { careType: 'nursing_home_semi', durationYears: 3, annualCost: 110_000 },
+            spouse: { careType: 'none', durationYears: 0, annualCost: 0 },
+            costInflationRate: 0,
+            ...ltc,
+        };
+        return inputs;
+    }
+
+    const at = (r: ReturnType<typeof runCompleteSimulation>, age: number) =>
+        r.projections.find(p => p.age === age)!;
+
+    it('REGRESSION: a disabled scenario reproduces the plan exactly', () => {
+        const off = runCompleteSimulation(carePlan({ enabled: false }), createSeededRNG(3));
+        const absent = makeInputs();
+        absent.personal.retirementAge = 65;
+        absent.personal.lifeExpectancy = 90;
+        absent.personal.filingStatus = 'single';
+        absent.phases = carePlan().phases;
+        absent.accounts = structuredClone(carePlan().accounts);
+        absent.income.socialSecurity.monthlyBenefitAtFRA = 2_600;
+        absent.income.socialSecurity.claimingAge = 67;
+        absent.simulation.returnStdDeviation = 0;
+        absent.withdrawalStrategy.strategy = 'standard';
+        delete absent.longTermCare;
+
+        const none = runCompleteSimulation(absent, createSeededRNG(3));
+        expect(off.finalBalance).toBeCloseTo(none.finalBalance, 6);
+        expect(off.projections.map(p => p.taxes.total))
+            .toEqual(none.projections.map(p => p.taxes.total));
+    });
+
+    it('bills care only inside the final-N-years window', () => {
+        const r = runCompleteSimulation(carePlan(), createSeededRNG(3));
+        expect(at(r, 87).expenses.longTermCare).toBe(0);
+        expect(at(r, 88).expenses.longTermCare).toBeCloseTo(110_000, 6);
+        expect(at(r, 90).expenses.longTermCare).toBeCloseTo(110_000, 6);
+    });
+
+    it('displaces living expenses for facility care but not for home care', () => {
+        const facility = runCompleteSimulation(carePlan(), createSeededRNG(3));
+        const home = runCompleteSimulation(
+            carePlan({ primary: { careType: 'home_health', durationYears: 3, annualCost: 110_000 } }),
+            createSeededRNG(3)
+        );
+        // Same phase and same year, so only the offset differs.
+        expect(at(facility, 88).expenses.living).toBeLessThan(at(home, 88).expenses.living);
+        expect(at(facility, 88).expenses.living / at(home, 88).expenses.living)
+            .toBeCloseTo(1 - LTC_SOLO_FACILITY_OFFSET, 6);
+        // Home care displaces nothing, so it matches the no-care year's living expense.
+        const off = runCompleteSimulation(carePlan({ enabled: false }), createSeededRNG(3));
+        expect(at(home, 88).expenses.living).toBeCloseTo(at(off, 88).expenses.living, 6);
+    });
+
+    it('itemizes in a care year: the same cash need costs less tax when it is medical', () => {
+        // Controlled comparison. Both plans need an extra $110k at age 90 and nothing
+        // else differs — same phases, same balances, same seed, zero inflation so the
+        // two amounts stay equal. One is HOME care (deductible, and displaces no living
+        // expense, so the cash requirement matches exactly); the other is an ordinary
+        // one-time expense. The only difference left is deductibility.
+        const medical = carePlan({
+            primary: { careType: 'home_health', durationYears: 1, annualCost: 110_000 },
+        });
+        medical.simulation.generalInflationRate = 0;
+
+        const ordinary = carePlan({ enabled: false });
+        ordinary.simulation.generalInflationRate = 0;
+        ordinary.oneTimeExpenses = [
+            { id: '1', description: 'Boat', amount: 110_000, age: 90 },
+        ];
+
+        const m = at(runCompleteSimulation(medical, createSeededRNG(3)), 90);
+        const o = at(runCompleteSimulation(ordinary, createSeededRNG(3)), 90);
+
+        // Same total spending in the year, and by 90 the RMD on the pooled tax-deferred
+        // balance exceeds the cash need in BOTH runs — so the withdrawal is identical and
+        // this is a clean controlled comparison: same income, same draw, only the
+        // deductibility of the expense differs.
+        expect(m.expenses.total).toBeCloseTo(o.expenses.total, 4);
+        expect(m.portfolio.withdrawals.total).toBeCloseTo(o.portfolio.withdrawals.total, 6);
+
+        // The medical version itemizes a deduction far above the standard one, so it pays
+        // materially less tax on that identical income.
+        expect(m.taxes.total).toBeLessThan(o.taxes.total * 0.75);
+    });
+
+    it('costs more overall and depletes the portfolio faster', () => {
+        const withCare = runCompleteSimulation(carePlan(), createSeededRNG(3));
+        const without = runCompleteSimulation(carePlan({ enabled: false }), createSeededRNG(3));
+        expect(withCare.finalBalance).toBeLessThan(without.finalBalance);
+    });
+
+    it('still funds every year it claims to (the cash-flow identity holds)', () => {
+        const r = runCompleteSimulation(carePlan(), createSeededRNG(3));
+        for (const p of r.projections) {
+            const lhs = p.income.totalBeforeWithdrawals + p.portfolio.withdrawals.total;
+            const rhs = p.expenses.total + p.taxes.total + p.netCashFlow;
+            expect(lhs).toBeCloseTo(rhs, 4);
+        }
+    });
+
+    it('routes care through the HSA tax-free before taxable accounts', () => {
+        const inputs = carePlan();
+        inputs.accounts.hsa.balanceAtRetirement = 500_000;
+        const r = runCompleteSimulation(inputs, createSeededRNG(3));
+        // Long-term care is a qualified medical expense, so the HSA covers it first.
+        expect(at(r, 88).portfolio.hsaForHealthcare).toBeGreaterThan(100_000);
     });
 });
 

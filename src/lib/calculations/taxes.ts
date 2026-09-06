@@ -124,6 +124,62 @@ export function calculateStandardDeduction(
 }
 
 /**
+ * Share of AGI below which medical expenses are not deductible (IRC §213(a)).
+ */
+export const MEDICAL_EXPENSE_AGI_FLOOR = 0.075;
+
+/**
+ * The deduction actually taken for the year: the greater of the standard deduction
+ * and an itemized medical deduction.
+ *
+ * WHY THIS EXISTS: a long-term-care year is the one year a retiree is genuinely
+ * likely to itemize. Nursing home fees are deductible medical expenses above 7.5% of
+ * AGI, and the amounts dwarf the standard deduction — roughly a $109k deduction on
+ * $120k of care against $150k of AGI, versus a ~$16k standard deduction. Charging
+ * tax on care-funding withdrawals without it would badly overstate tax in exactly
+ * the years that decide whether the plan holds.
+ *
+ * SIMPLIFICATIONS (disclosed):
+ * - This is the ONLY itemized deduction modeled. Real itemizers would add SALT and
+ *   charitable gifts, so the deduction here is understated whenever someone would
+ *   have itemized anyway — conservative, never optimistic.
+ * - `medicalExpenses` is only supplied in years with long-term care. Ordinary
+ *   Medicare premiums and out-of-pocket costs are legitimately deductible too, but
+ *   almost never clear the 7.5% floor *and* beat the standard deduction on their
+ *   own; ignoring them keeps every non-care plan computing exactly as before.
+ * - Care is treated as fully deductible. For a nursing home that holds when the stay
+ *   is primarily for medical care; for assisted living it requires the resident to be
+ *   chronically ill under a plan of care, which someone needing multi-year assisted
+ *   living generally is. This is the optimistic edge of the model and is disclosed.
+ */
+export function calculateDeduction(
+    currentAge: number,
+    year: number,
+    filingStatus: FilingStatus = 'single',
+    inflationFactor: number = 1,
+    includeSeniorBonus: boolean = true,
+    spouseAge?: number,
+    /** Deductible medical expenses for the year. 0 means "use the standard deduction". */
+    medicalExpenses: number = 0,
+    /** AGI the 7.5% floor is measured against. */
+    agi: number = 0
+): number {
+    const standard = calculateStandardDeduction(
+        currentAge,
+        year,
+        filingStatus,
+        inflationFactor,
+        includeSeniorBonus,
+        spouseAge
+    );
+
+    if (medicalExpenses <= 0) return standard;
+
+    const itemized = Math.max(0, medicalExpenses - MEDICAL_EXPENSE_AGI_FLOOR * Math.max(0, agi));
+    return Math.max(standard, itemized);
+}
+
+/**
  * Tax-smart sequencing helper: how much can be pulled from a tax-deferred account
  * this year while keeping total taxable income at or below the standard-deduction
  * floor (i.e. an approximately tax-free draw).
@@ -154,32 +210,42 @@ export function calculateTaxFreeTaxDeferredRoom(
     deductionInflationFactor: number = 1,
     filingStatus: FilingStatus = 'single',
     includeSeniorBonus: boolean = true,
-    spouseAge?: number
+    spouseAge?: number,
+    /** Deductible medical expenses (long-term care years only). See calculateDeduction. */
+    medicalExpenses: number = 0
 ): number {
-    const deduction = calculateStandardDeduction(
-        currentAge,
-        year,
-        filingStatus,
-        deductionInflationFactor,
-        includeSeniorBonus,
-        spouseAge
-    );
-
     const totalTaxableAt = (x: number): number =>
         calculateTaxableSocialSecurity(ssBenefit, otherOrdinaryTaxable + x, filingStatus, ssTaxablePctCap) +
         otherOrdinaryTaxable +
         x;
 
+    // The floor is a constant in an ordinary year, but SHRINKS with the draw in a
+    // long-term-care year: a bigger draw raises AGI, which raises the 7.5% medical
+    // floor. Both sides of the comparison therefore move, and they still cross exactly
+    // once — taxable income rises while the floor falls — so the bisection holds.
+    const deductionAt = (x: number): number =>
+        calculateDeduction(
+            currentAge,
+            year,
+            filingStatus,
+            deductionInflationFactor,
+            includeSeniorBonus,
+            spouseAge,
+            medicalExpenses,
+            totalTaxableAt(x)
+        );
+
     // Already at/above the floor before any discretionary draw → no tax-free room.
-    if (totalTaxableAt(0) >= deduction) return 0;
+    if (totalTaxableAt(0) >= deductionAt(0)) return 0;
 
     // Bisect for the draw that lifts taxable income up to (not over) the floor.
-    // Upper bound: x = deduction always overshoots since total(x) ≥ x.
+    // Upper bound: x = deductionAt(0) always overshoots, since total(x) ≥ x and the
+    // floor never rises above its value at x = 0.
     let lo = 0;
-    let hi = deduction;
+    let hi = deductionAt(0);
     for (let i = 0; i < 40 && hi - lo > 1; i++) {
         const mid = (lo + hi) / 2;
-        if (totalTaxableAt(mid) <= deduction) {
+        if (totalTaxableAt(mid) <= deductionAt(mid)) {
             lo = mid;
         } else {
             hi = mid;
@@ -228,7 +294,9 @@ export function calculateTaxOnFixedIncome(
     deductionInflationFactor: number = 1,
     filingStatus: FilingStatus = 'single',
     includeSeniorBonus: boolean = true,
-    spouseAge?: number
+    spouseAge?: number,
+    /** Deductible medical expenses (long-term care years only). See calculateDeduction. */
+    medicalExpenses: number = 0
 ): number {
     // Taxable Social Security via the provisional-income formula (other fixed income
     // only — withdrawals are added in the final calculation). The user-specified
@@ -243,14 +311,17 @@ export function calculateTaxOnFixedIncome(
 
     const taxableIncome = taxableSS + otherIncome;
 
-    // Subtract the standard-deduction floor before applying the rate.
-    const deduction = calculateStandardDeduction(
+    // Subtract the deduction floor before applying the rate. In a long-term-care year
+    // this may be an itemized medical deduction instead of the standard one.
+    const deduction = calculateDeduction(
         currentAge,
         year,
         filingStatus,
         deductionInflationFactor,
         includeSeniorBonus,
-        spouseAge
+        spouseAge,
+        medicalExpenses,
+        taxableIncome
     );
 
     return Math.max(0, taxableIncome - deduction) * effectiveTaxRate;
@@ -307,7 +378,9 @@ export function calculateTotalTaxes(
     hsaNonMedicalWithdrawal: number = 0,
     filingStatus: FilingStatus = 'single',
     includeSeniorBonus: boolean = true,
-    spouseAge?: number
+    spouseAge?: number,
+    /** Deductible medical expenses (long-term care years only). See calculateDeduction. */
+    medicalExpenses: number = 0
 ): {
     onFixedIncome: number;
     onWithdrawals: number;
@@ -338,13 +411,18 @@ export function calculateTotalTaxes(
     const fixedBase = taxableSS + income.pensions + income.partTimeWork + income.rentalIncome;
     const withdrawalBase = ordinaryWithdrawals + brokerageGain;
 
-    const deduction = calculateStandardDeduction(
+    const deduction = calculateDeduction(
         currentAge,
         year,
         filingStatus,
         deductionInflationFactor,
         includeSeniorBonus,
-        spouseAge
+        spouseAge,
+        medicalExpenses,
+        // AGI for the 7.5% floor is the year's whole taxable base, withdrawals included:
+        // funding care from a tax-deferred account raises AGI, which raises the floor and
+        // shrinks the very deduction the care created.
+        fixedBase + withdrawalBase
     );
 
     const fixedTaxable = Math.max(0, fixedBase - deduction);
