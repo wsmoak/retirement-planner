@@ -5,6 +5,7 @@ import type { SimulationResults } from '@/types'
 import type { UserInputs } from '@/types';
 import { formatMoney } from '@/lib/format';
 import { RMD_START_AGE } from '@/lib/calculations/rmd';
+import { simulationHorizon } from '@/lib/calculations/household';
 
 interface SummaryDashboardProps {
     results: SimulationResults;
@@ -14,7 +15,10 @@ interface SummaryDashboardProps {
 export function SummaryDashboard({ results, inputs }: SummaryDashboardProps) {
     const { personal, accounts } = inputs;
 
-    const retirementDuration = personal.lifeExpectancy - personal.retirementAge;
+    // The plan runs to the last death, which for a couple can be past the user's own
+    // life expectancy — every "how long does it last" figure below keys to that.
+    const horizon = simulationHorizon(personal);
+    const retirementDuration = horizon - personal.retirementAge;
 
     const startingPortfolio =
         accounts.taxDeferred.balanceAtRetirement +
@@ -92,7 +96,7 @@ export function SummaryDashboard({ results, inputs }: SummaryDashboardProps) {
                                                         ⏱️ <strong>Years Funded:</strong> {results.failedRuns.medianAgeOfDepletion - personal.retirementAge} of {retirementDuration} retirement years
                                                     </p>
                                                     <p className="text-xs text-red-700 mt-2 italic">
-                                                        This means the typical failed scenario runs out of money {personal.lifeExpectancy - results.failedRuns.medianAgeOfDepletion} years before your planned life expectancy.
+                                                        This means the typical failed scenario runs out of money {horizon - results.failedRuns.medianAgeOfDepletion} years before the end of your plan.
                                                     </p>
                                                 </>
                                             )}
@@ -153,7 +157,7 @@ export function SummaryDashboard({ results, inputs }: SummaryDashboardProps) {
             {/* Portfolio Balance Distribution */}
             <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
                 <div className="mb-4">
-                    <h3 className="text-lg font-semibold">Portfolio Balance at Age {personal.lifeExpectancy}</h3>
+                    <h3 className="text-lg font-semibold">Portfolio Balance at Age {horizon}</h3>
                     <p className="text-sm text-gray-600 mt-1">
                         Distribution across all {results.numberOfRuns.toLocaleString()} scenarios (including {failedCount.toLocaleString()} failures)
                     </p>
@@ -214,7 +218,7 @@ export function SummaryDashboard({ results, inputs }: SummaryDashboardProps) {
                         <div className="space-y-1">
                             <div className="text-sm text-gray-600">Starting (at retirement)</div>
                             <div className="text-2xl font-bold">{formatMoney(startingPortfolio)}</div>
-                            <div className="text-sm text-gray-600 mt-2">Typical outcome at {personal.lifeExpectancy}</div>
+                            <div className="text-sm text-gray-600 mt-2">Typical outcome at {horizon}</div>
                             <div className="text-2xl font-bold">{formatMoney(results.percentiles.p50)}</div>
                         </div>
                     }

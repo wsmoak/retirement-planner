@@ -50,21 +50,27 @@ Social Security (claiming age, COLA, earnings test, provisional-income taxabilit
 RMDs from age 75 · Medicare premiums and IRMAA · pre-Medicare healthcare · HSA (incl. age-65+
 flexibility) · pensions, part-time work, and rental income · phase-based spending (Go-Go /
 Slow-Go / No-Go) · two active withdrawal strategies — standard priority order and tax-smart
-deduction-floor filling (a third, gap-year Roth conversions, is scaffolded but disabled).
+deduction-floor filling (a third, gap-year Roth conversions, is scaffolded but disabled) ·
+**per-spouse life expectancy and the survivor's penalty** — each spouse gets their own planning
+age, the plan runs to the later of the two, and at the first death the household switches to
+filing single, keeps only the larger Social Security benefit, drops to one set of healthcare
+costs, and steps living expenses down to 75% of the couple's.
 
 **What it deliberately does *not* model** — pre-retirement accumulation · **state income tax for
 the other 38 states** (fold your rate into the marginal rate yourself) ·
 ACA subsidies for pre-Medicare coverage · **long-term care** (often the largest single retirement
-risk) · the survivor's penalty for couples · per-spouse accounts (couples' balances are pooled) ·
+risk) · per-spouse accounts (couples' balances are pooled) · spousal and survivor Social Security
+rules beyond taking the larger own-record benefit · the spouse's own earned income ·
 variable inflation · dynamic spending guardrails · fat-tail crashes · fees and transaction costs ·
 home equity and mortgages · **non-income state and local taxes** (sales, property, excise) — a
 no-income-tax state is not necessarily a low-tax state.
 
 **Key simplifications** — one marginal rate above the standard deduction rather than the full
 10–37% brackets · long-term capital gains taxed at that same flat rate (no 0/15/20% brackets) ·
-fixed life expectancy, not a mortality distribution · all accounts share one market shock per year
-(perfectly correlated) · annual returns capped at ±50% · IRMAA estimated by you rather than
-derived from MAGI.
+fixed life expectancies, not a mortality distribution — so for a couple the *length* of the
+survivor's period is an assumption you choose, not a probability · all accounts share one market
+shock per year (perfectly correlated) · annual returns capped at ±50% · IRMAA estimated by you
+rather than derived from MAGI.
 
 Several of these gaps are open, well-scoped contribution opportunities — see
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -269,7 +275,7 @@ Contributions are welcome — including from people who don't write code.
   disagrees with the app, that's a great bug report.
 - **Challenge an assumption.** If you know the tax, Medicare, or Social Security rules better than
   the code does, cite the source and we'll fix it or document the simplification.
-- **Close a known gap.** ACA subsidies, the survivor's penalty, and a state module for any of the
+- **Close a known gap.** ACA subsidies, probabilistic mortality, and a state module for any of the
   remaining 38 unmodeled states are all documented, unbuilt, and well-scoped — see
   `docs/5-state-tax-model.md` for the pattern the first four states followed.
 

@@ -33,7 +33,9 @@ Establishes the timeline and tax context that drive duration and phase transitio
   tax on tax-deferred draws: the 10% early-withdrawal penalty is not modeled, nor are the
   strategies that avoid it (Roth conversion ladder, 72(t)/SEPP, rule of 55). Disclosed in the
   Assumptions panel.
-- **Life expectancy** (70–110, default 90) — planning horizon.
+- **Life expectancy** (70–110, default 90) — planning horizon. For MFJ, **each spouse has their
+  own**; the simulation runs to the later of the two. A saved plan with no spouse value defaults
+  to the old shared horizon, so it recomputes unchanged.
 - **State** (50 states + DC) — **thirteen states are modeled**: the nine with no individual income
   tax (AK, FL, NH, NV, SD, TN, TX, WA, WY), **Georgia**, **Virginia**, **California**, and
   **New York**. For those, state tax is computed and the marginal rate in Step 4 becomes
@@ -257,8 +259,10 @@ Honest disclosure sets realistic expectations. Displayed prominently on results:
 - **Healthcare:** Medicare base + inflation; out-of-pocket estimated; **long-term care NOT
   modeled** ($50k–150k+/yr); no ACA subsidies; HSA covers healthcare first.
 - **Spending:** constant within each phase; no market-based or dynamic adjustments.
-- **Mortality / couples:** fixed life expectancy (no distribution); for MFJ, both spouses
-  assumed alive to a shared horizon — **the survivor's penalty is not modeled** (see [`4-married-filing-jointly.md`](4-married-filing-jointly.md)).
+- **Mortality / couples:** fixed life expectancies (no distribution), but **per spouse** for MFJ —
+  the plan runs to the later death and **the survivor's penalty is modeled** (MFJ→single, the
+  smaller SS check stops, one healthcare track, living expenses step down to 75%). What remains
+  deterministic is *when* each death happens (see [`4-married-filing-jointly.md`](4-married-filing-jointly.md)).
 - **Not modeled:** pre-retirement accumulation, long-term care, actual brackets, dynamic
   spending, estate planning, inflation variability, ACA subsidies, Roth conversions, and state
   tax outside the thirteen modeled states.
@@ -346,8 +350,9 @@ and print (includes assumptions, static charts, no interactive elements).
 - **Contextual help / tooltips:** blended return, RMD, SS earnings test, marginal vs effective
   rate, IRMAA, Monte Carlo, success rate, HSA triple tax advantage.
 - **FAQ:** where to enter bonds (blended return); **couples support** — yes, choose MFJ in
-  Step 1 (models combined SS, the joint deduction, and per-spouse Medicare timing; the
-  survivor's penalty and separate per-spouse accounts are not yet modeled — see [`4-married-filing-jointly.md`](4-married-filing-jointly.md));
+  Step 1 (models combined SS, the joint deduction, per-spouse Medicare timing, per-spouse life
+  expectancy, and the survivor's penalty; separate per-spouse accounts and probabilistic
+  mortality are not yet modeled — see [`4-married-filing-jointly.md`](4-married-filing-jointly.md));
   part-time + early SS (earnings test); accuracy/limitations; success-rate meaning; why
   balances are entered "at retirement"; how to use an HSA.
 - **External resources:** SSA benefits estimator, medicare.gov costs, IRS Pub 590-B (RMDs),
@@ -376,9 +381,11 @@ See [`6-system-design.md`](6-system-design.md) for architecture and file-level d
 
 Roughly in priority order (living list; not commitments):
 
-1. **Survivor's penalty & mortality for couples** — first-death transition (MFJ→single,
-   deduction/IRMAA drop, smaller SS ends) and probabilistic mortality. Highest-value couples
-   gap; see [`4-married-filing-jointly.md`](4-married-filing-jointly.md).
+1. **Probabilistic mortality for couples** — the first-death transition (MFJ→single, smaller SS
+   ends, one healthcare track) and per-spouse life expectancy have **shipped**; what remains is
+   replacing the two fixed death ages with per-person distributions, so the success rate becomes
+   joint-survival-weighted rather than conditional on two chosen ages.
+   See [`4-married-filing-jointly.md`](4-married-filing-jointly.md).
 2. **Per-state tax modules (in progress)** — the nine no-income-tax states, Georgia, Virginia,
    and **California** (brackets by filing status, credit-based exemption, Behavioral Health
    Services Tax surtax) have shipped; **NY** is next. See [`5-state-tax-model.md`](5-state-tax-model.md).
@@ -388,7 +395,8 @@ Roughly in priority order (living list; not commitments):
 6. **ACA subsidy modeling** for pre-65 healthcare.
 7. **Long-term care modeling** (self-funding or LTC insurance).
 8. **Fuller tax modeling** — actual federal brackets, 0/15/20% LTCG.
-9. **Per-spouse life expectancy, different retirement dates, separate accounts, spousal SS.**
+9. **Different retirement dates, separate per-spouse accounts, spousal SS top-up, spouse's own
+   earned income.** (Per-spouse life expectancy has shipped.)
 10. **Legacy/estate goals; smart recommendations.**
 
 ---
@@ -399,8 +407,9 @@ Roughly in priority order (living list; not commitments):
 results are probabilistic, not guarantees; returns are normal (no fat tails); accounts share
 one market shock; inflation is constant; spending is constant within a phase.
 
-**Scope constraints:** US-only; single or MFJ (couples modeled per [`4-married-filing-jointly.md`](4-married-filing-jointly.md), no
-survivor penalty yet); no pre-retirement accumulation; fixed life expectancy; simplified tax
+**Scope constraints:** US-only; single or MFJ (couples modeled per [`4-married-filing-jointly.md`](4-married-filing-jointly.md),
+including the survivor's penalty); no pre-retirement accumulation; fixed life expectancies
+(per spouse, but not probabilistic); simplified tax
 (marginal rate + deduction floor, no full brackets); no long-term care; state tax for thirteen
 states only (§2.1); no ACA subsidies; no Roth conversions yet; no dynamic spending. Client-side only;
 localStorage is unencrypted ("don't use on shared computers"); no SSN/account numbers/names required.

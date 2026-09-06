@@ -2,6 +2,7 @@
 
 import { CheckCircle, Trash2, FolderOpen } from 'lucide-react';
 import type { SavedScenario } from '@/lib/storage/scenarioStorage';
+import { simulationHorizon } from '@/lib/calculations/household';
 
 interface ScenarioCardProps {
     scenario: SavedScenario;
@@ -104,8 +105,10 @@ export function ScenarioCard({
                     <span className="font-medium">{inputs.personal.retirementAge}</span>
                 </div>
                 <div className="flex justify-between">
-                    <span className="text-gray-600">Life Expectancy</span>
-                    <span className="font-medium">{inputs.personal.lifeExpectancy}</span>
+                    <span className="text-gray-600">
+                        {inputs.personal.filingStatus === 'married_joint' ? 'Plan Ends At' : 'Life Expectancy'}
+                    </span>
+                    <span className="font-medium">{simulationHorizon(inputs.personal)}</span>
                 </div>
                 <div className="flex justify-between">
                     <span className="text-gray-600">Starting Portfolio</span>

@@ -16,6 +16,7 @@ import { NumberField } from '@/components/common/NumberField';
 import { HelpPopover } from '@/components/common/HelpPopover';
 import { InlineGuidance } from '@/components/common/InlineGuidance';
 import { ScopeBadge } from '@/components/common/ScopeBadge';
+import { simulationHorizon } from '@/lib/calculations/household';
 
 export function Screen2SavingsIncome() {
     const {
@@ -352,7 +353,7 @@ export function Screen2SavingsIncome() {
                                                         <label className="block text-xs font-medium mb-1">Start Age</label>
                                                         <input type="number" value={pension.startAge}
                                                             onChange={(e) => handlePensionChange(pension.id, 'startAge', parseInt(e.target.value) || personal.retirementAge)}
-                                                            className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500" min={personal.retirementAge} max={personal.lifeExpectancy} />
+                                                            className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500" min={personal.retirementAge} max={simulationHorizon(personal)} />
                                                     </div>
                                                     <div className="w-24">
                                                         <label className="block text-xs font-medium mb-1">COLA</label>

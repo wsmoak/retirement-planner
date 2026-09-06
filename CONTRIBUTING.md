@@ -36,9 +36,10 @@ Deliberately **out of scope**:
 - **Individualized advice.** The tool shows outcomes; it doesn't tell people what to do.
 
 **Known gaps that are fair game** (all currently disclosed in the app's Disclosures tab):
-state income tax, ACA subsidies for pre-Medicare coverage, long-term care costs, the survivor's
-penalty for couples, per-spouse (non-pooled) accounts, variable inflation, dynamic spending
-guardrails, and fat-tail return modeling. Several of these have design notes in `docs/`.
+state income tax, ACA subsidies for pre-Medicare coverage, long-term care costs, probabilistic
+mortality for couples (the survivor's penalty itself is now modeled), per-spouse (non-pooled)
+accounts, variable inflation, dynamic spending guardrails, and fat-tail return modeling. Several
+of these have design notes in `docs/`.
 
 If a change is large, **open an issue first** so we can agree on the approach before you spend
 time on it.

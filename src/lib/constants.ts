@@ -18,6 +18,23 @@ export const DEFAULT_SPOUSE_SOCIAL_SECURITY: SocialSecurity = {
  *  married-filing-jointly. A sensible, editable baseline (spouse a couple years younger). */
 export const DEFAULT_SPOUSE_AGE_AT_RETIREMENT = 56;
 
+/**
+ * Share of the couple's living expenses the survivor still spends after the first
+ * death.
+ *
+ * Emphatically NOT 0.5. Housing, utilities, property tax, insurance, and
+ * maintenance barely move when a household goes from two people to one; only the
+ * genuinely per-person costs (food, clothing, a second car, travel for two) fall
+ * away. Planning literature and the ~consumption-equivalence scales behind it put
+ * a survivor's needs near 70-80% of the couple's. 0.75 sits in the middle of that
+ * band and is deliberately on the cautious side of halving.
+ *
+ * Healthcare is NOT covered by this factor — it is already modeled per person, so
+ * the second track simply stops. This applies to phase-based living expenses only;
+ * one-time expenses are discrete planned events (a roof, a car) and are left alone.
+ */
+export const SURVIVOR_SPENDING_FACTOR = 0.75;
+
 export const US_STATES: { value: USState; label: string }[] = [
     { value: 'AL', label: 'Alabama' },
     { value: 'AK', label: 'Alaska' },

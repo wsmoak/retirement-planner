@@ -15,6 +15,7 @@ import {
     calculateSocialSecurityBenefit,
 } from './socialSecurity';
 import type { Pension, PartTimeWork, RentalIncome, SocialSecurity } from '@/types';
+import type { DeceasedPerson } from '@/lib/calculations/household';
 
 /**
  * Household Social Security for a year: the primary benefit (with earnings test)
@@ -255,8 +256,17 @@ export function calculateYearlyIncome(
     generalInflationRate: number,
     /** MFJ only: the spouse's own Social Security, summed into the household benefit. */
     spouseSocialSecurity?: SocialSecurity,
-    /** MFJ only: the spouse's age this year (drives their claiming/COLA). */
-    spouseAge?: number
+    /**
+     * MFJ only: the spouse's age this year (drives their claiming/COLA). This is the
+     * NOTIONAL age — it keeps advancing after a spouse's death, because a survivor
+     * inherits the larger benefit and that benefit goes on receiving COLA.
+     */
+    spouseAge?: number,
+    /**
+     * Which spouse has died, if either. Once one has, the household stops receiving
+     * two checks and receives one survivor benefit instead. See `household.ts`.
+     */
+    deceased?: DeceasedPerson
 ): {
     socialSecurity: number;
     socialSecurityFull: number;
@@ -269,11 +279,15 @@ export function calculateYearlyIncome(
     rentalIncome: number;
     totalBeforeWithdrawals: number;
 } {
+    // Part-time work belongs to the PRIMARY — the spouse's own earned income isn't
+    // modeled. So it stops at the primary's death, along with the earnings test that
+    // only ever applied to their benefit.
+    const primaryDeceased = deceased === 'primary';
+
     // Social Security with earnings test
-    const { grossIncome: partTimeGross } = calculatePartTimeWorkIncome(
-        currentAge,
-        partTimeWork
-    );
+    const { grossIncome: partTimeGross } = primaryDeceased
+        ? { grossIncome: 0 }
+        : calculatePartTimeWorkIncome(currentAge, partTimeWork);
 
     const ssResult = calculateSocialSecurityWithEarningsTest(
         currentAge,
@@ -284,7 +298,8 @@ export function calculateYearlyIncome(
     );
 
     // Spouse Social Security (MFJ). No earnings test — the spouse's own work isn't
-    // modeled in Phase 1. Added to both the household and "full" benefit figures.
+    // modeled. Computed from the notional age, so it stays available as the basis
+    // for a survivor benefit even after the spouse has died.
     const spouseBenefit =
         spouseSocialSecurity && spouseAge !== undefined
             ? calculateSocialSecurityBenefit(
@@ -295,13 +310,21 @@ export function calculateYearlyIncome(
             )
             : 0;
 
+    // A survivor keeps the LARGER of the two benefits, not both — the smaller check
+    // simply stops. This is half of the survivor's penalty (the other half is the
+    // filing-status flip); together they are why the years after a first death are
+    // the ones a shared-horizon model gets most wrong.
+    const survivorTakesSpouseBenefit =
+        deceased !== null && deceased !== undefined && spouseBenefit > ssResult.finalBenefit;
+
     // Pensions
     const pensionTotal = calculateTotalPensionIncome(currentAge, pensions);
     const governmentPensionIncome = calculateGovernmentPensionIncome(currentAge, pensions);
 
-    // Part-time work
-    const { grossIncome: partTimeIncome, payrollTax: partTimePayrollTax } =
-        calculatePartTimeWorkIncome(currentAge, partTimeWork);
+    // Part-time work (the primary's; zero once they are gone)
+    const { grossIncome: partTimeIncome, payrollTax: partTimePayrollTax } = primaryDeceased
+        ? { grossIncome: 0, payrollTax: 0 }
+        : calculatePartTimeWorkIncome(currentAge, partTimeWork);
 
     // Rental income
     const rentalIncomeAmount = calculateRentalIncome(
@@ -310,8 +333,10 @@ export function calculateYearlyIncome(
         generalInflationRate
     );
 
-    // Household Social Security = primary (post-earnings-test) + spouse.
-    const householdSocialSecurity = ssResult.finalBenefit + spouseBenefit;
+    // Household Social Security: both checks while the couple is intact, the larger
+    // of the two once it isn't.
+    const householdSocialSecurity =
+        deceased ? Math.max(ssResult.finalBenefit, spouseBenefit) : ssResult.finalBenefit + spouseBenefit;
 
     // Total income before portfolio withdrawals
     const totalBeforeWithdrawals =
@@ -319,8 +344,12 @@ export function calculateYearlyIncome(
 
     return {
         socialSecurity: householdSocialSecurity,
-        socialSecurityFull: ssResult.fullBenefit + spouseBenefit,
-        socialSecurityReduction: ssResult.reduction,
+        socialSecurityFull: deceased
+            ? Math.max(ssResult.fullBenefit, spouseBenefit)
+            : ssResult.fullBenefit + spouseBenefit,
+        // The earnings-test reduction is the primary's. It is moot in a year where
+        // the benefit actually paid is the spouse's.
+        socialSecurityReduction: survivorTakesSpouseBenefit ? 0 : ssResult.reduction,
         pensions: pensionTotal,
         governmentPensionIncome,
         partTimeWork: partTimeIncome,

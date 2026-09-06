@@ -16,6 +16,7 @@ import { HelpPopover } from '@/components/common/HelpPopover';
 import { InlineGuidance } from '@/components/common/InlineGuidance';
 import { ScopeBadge } from '@/components/common/ScopeBadge';
 import { isStateModeled } from '@/lib/calculations/stateTaxRules';
+import { resolveSpouseLifeExpectancy, simulationHorizon } from '@/lib/calculations/household';
 
 const MIN_PHASE_SPENDING = 1000;
 
@@ -33,13 +34,22 @@ export function Screen1Plan() {
     const { retirementAge, lifeExpectancy } = personal;
 
     const isMFJ = personal.filingStatus === 'married_joint';
-    const retirementDuration = lifeExpectancy - retirementAge;
+    // The plan has to stay funded through the LAST death, so the duration the user sees
+    // — and the phase table below — follow the horizon, not just their own age.
+    const horizon = simulationHorizon(personal);
+    const retirementDuration = horizon - retirementAge;
+    const spouseLifeExpectancy = resolveSpouseLifeExpectancy(personal);
 
     const handleFilingStatusChange = (value: 'single' | 'married_joint') => {
         if (value === 'married_joint') {
+            const spouseAge = personal.spouseAgeAtRetirement ?? DEFAULT_SPOUSE_AGE_AT_RETIREMENT;
             updatePersonal({
                 filingStatus: 'married_joint',
-                spouseAgeAtRetirement: personal.spouseAgeAtRetirement ?? DEFAULT_SPOUSE_AGE_AT_RETIREMENT,
+                spouseAgeAtRetirement: spouseAge,
+                // Seed the spouse's horizon to the equivalent of the old shared one, so
+                // switching to MFJ changes nothing until the user deliberately edits it.
+                spouseLifeExpectancy:
+                    personal.spouseLifeExpectancy ?? spouseAge + (lifeExpectancy - retirementAge),
             });
             if (!income.spouseSocialSecurity) {
                 updateSpouseSocialSecurity({});
@@ -63,12 +73,14 @@ export function Screen1Plan() {
             newPhases[0] = { ...newPhases[0], startAge: retirementAge };
             changed = true;
         }
-        if (newPhases[2].endAge !== lifeExpectancy) {
-            newPhases[2] = { ...newPhases[2], endAge: lifeExpectancy };
+        // Phase 3 ends at the horizon — for a couple that is the later death, so the
+        // No-Go phase covers the survivor's years too.
+        if (newPhases[2].endAge !== horizon) {
+            newPhases[2] = { ...newPhases[2], endAge: horizon };
             changed = true;
         }
         if (changed) updatePhases(newPhases);
-    }, [retirementAge, lifeExpectancy]);
+    }, [retirementAge, horizon]);
 
     useEffect(() => {
         if (lastAddedId && descRefs.current[lastAddedId]) {
@@ -115,7 +127,7 @@ export function Screen1Plan() {
         { title: 'No-Go Years', subtitle: 'Late Retirement', description: 'Limited mobility', typicalAges: 'Typically 86+' },
     ];
     const endAgeMin = [retirementAge + 1, phases[0].endAge + 2, undefined];
-    const endAgeMax = [phases[1].endAge - 1, lifeExpectancy - 1, undefined];
+    const endAgeMax = [phases[1].endAge - 1, horizon - 1, undefined];
     const startAgeLabels = ['(set by retirement age)', '(= Phase 1 end + 1)', '(= Phase 2 end + 1)'];
 
     return (
@@ -161,9 +173,10 @@ export function Screen1Plan() {
                 </p>
                 {isMFJ && (
                     <p className="text-sm text-blue-800 mt-2">
-                        For couples, the projection follows <strong>your</strong> age. <strong>Life Expectancy</strong> is a
-                        single shared horizon — both of you are assumed alive until then (the survivor’s penalty isn’t modeled).
-                        Set your spouse’s age below so their Social Security and Medicare line up on your timeline.
+                        For couples, the projection follows <strong>your</strong> age, and runs until
+                        the <strong>later</strong> of the two life expectancies. Set each of you separately —
+                        at the first death the plan switches to filing single, keeps only the larger
+                        Social Security check, and drops to one set of healthcare costs.
                     </p>
                 )}
             </div>
@@ -190,13 +203,23 @@ export function Screen1Plan() {
                         />
                     )}
                     <NumberField
-                        label="Life Expectancy"
+                        label={isMFJ ? 'Your Life Expectancy' : 'Life Expectancy'}
                         value={lifeExpectancy}
                         onChange={(lifeExpectancy) => updatePersonal({ lifeExpectancy })}
                         min={70}
                         max={110}
-                        helperText="How long money must last"
+                        helperText={isMFJ ? 'Your own planning age' : 'How long money must last'}
                     />
+                    {isMFJ && (
+                        <NumberField
+                            label="Spouse’s Life Expectancy"
+                            value={spouseLifeExpectancy ?? lifeExpectancy}
+                            onChange={(spouseLifeExpectancy) => updatePersonal({ spouseLifeExpectancy })}
+                            min={70}
+                            max={110}
+                            helperText="Their own planning age"
+                        />
+                    )}
                     <div>
                         <label className="block text-sm font-medium mb-1">State</label>
                         <select
@@ -228,12 +251,16 @@ export function Screen1Plan() {
 
                 {/* Resulting duration — or a validation warning when the span is invalid.
                     Neutral color (a computed span, not a "good"/"bad" signal). */}
-                {lifeExpectancy > retirementAge ? (
+                {horizon > retirementAge ? (
                     <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-sm font-medium text-slate-800">Retirement Duration</p>
-                                <p className="text-xs text-slate-500">How long your portfolio needs to last</p>
+                                <p className="text-xs text-slate-500">
+                                    {isMFJ
+                                        ? `How long your portfolio needs to last — through age ${horizon} on your timeline, the later of the two life expectancies`
+                                        : 'How long your portfolio needs to last'}
+                                </p>
                             </div>
                             <div className="text-right">
                                 <p className="text-3xl font-bold text-slate-900">{retirementDuration}</p>
@@ -397,7 +424,7 @@ export function Screen1Plan() {
                                                 onChange={(e) => handleExpenseChange(expense.id, 'age', parseInt(e.target.value) || retirementAge)}
                                                 className="w-full px-3 py-2 border rounded-md bg-white text-center focus:ring-2 focus:ring-blue-500"
                                                 min={retirementAge}
-                                                max={lifeExpectancy}
+                                                max={horizon}
                                                 placeholder="Age"
                                             />
                                         </div>

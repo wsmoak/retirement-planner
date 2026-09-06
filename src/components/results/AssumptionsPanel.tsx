@@ -5,6 +5,8 @@ import { AlertTriangle, Info } from 'lucide-react';
 import type { UserInputs } from '@/types';
 import { RMD_START_AGE } from '@/lib/calculations/rmd';
 import { stateTaxDisclosure } from '@/lib/calculations/stateTax';
+import { resolveSpouseLifeExpectancy, simulationHorizon } from '@/lib/calculations/household';
+import { SURVIVOR_SPENDING_FACTOR } from '@/lib/constants';
 
 interface AssumptionsPanelProps {
     inputs: UserInputs;
@@ -15,6 +17,10 @@ export default function AssumptionsPanel({ inputs }: AssumptionsPanelProps) {
     // A missing mode means a scenario saved before state tax existed — it still recomputes
     // with state folded into the marginal rate, so the disclosure must say so.
     const stateTaxComputed = (inputs.tax.stateTaxMode ?? 'manual') === 'modeled';
+    // For a couple the plan runs to the LATER of the two deaths, so the disclosures
+    // must quote that age rather than the user's own life expectancy.
+    const horizon = simulationHorizon(inputs.personal);
+    const spouseLifeExpectancy = resolveSpouseLifeExpectancy(inputs.personal);
 
     return (
         <div className="space-y-6">
@@ -40,7 +46,7 @@ export default function AssumptionsPanel({ inputs }: AssumptionsPanelProps) {
                     <div className="bg-white rounded-lg p-4 border border-blue-200">
                         <h4 className="font-semibold text-blue-900 mb-2">📊 Success Rate</h4>
                         <p className="mb-2">
-                            The percentage of {inputs.simulation.numberOfRuns.toLocaleString()} simulated scenarios where your portfolio lasted through age {inputs.personal.lifeExpectancy}.
+                            The percentage of {inputs.simulation.numberOfRuns.toLocaleString()} simulated scenarios where your portfolio lasted through age {horizon}.
                         </p>
                         <ul className="list-disc list-inside space-y-1 ml-2 text-xs">
                             <li><strong>90-100%:</strong> Strong plan with low risk of running out of money</li>
@@ -237,8 +243,21 @@ export default function AssumptionsPanel({ inputs }: AssumptionsPanelProps) {
                             <li>50% of people live beyond average life expectancy - plan conservatively</li>
                             {inputs.personal.filingStatus === 'married_joint' ? (
                                 <>
-                                    <li>Both spouses assumed to live to the shared life expectancy (age {inputs.personal.lifeExpectancy})</li>
-                                    <li><strong>Survivor's penalty not modeled</strong> — no switch to single filing on first death, and the smaller Social Security benefit is never dropped</li>
+                                    <li>
+                                        Each spouse has their own life expectancy (you: {inputs.personal.lifeExpectancy},
+                                        spouse: {spouseLifeExpectancy}). The plan runs to the later of the two —
+                                        age {horizon} on your timeline.
+                                    </li>
+                                    <li>
+                                        <strong>Survivor's penalty is modeled</strong> — at the first death the household
+                                        switches to filing single, keeps only the larger Social Security benefit, drops to
+                                        one set of healthcare costs, and spends {Math.round(SURVIVOR_SPENDING_FACTOR * 100)}%
+                                        of the couple's living expenses
+                                    </li>
+                                    <li>
+                                        Both deaths are fixed ages, not a mortality distribution, so the length of the
+                                        survivor's period is an assumption rather than a probability
+                                    </li>
                                 </>
                             ) : (
                                 <>

@@ -17,10 +17,18 @@ export interface PersonalInfo {
     // MFJ only: the spouse's age in the year the primary retires. The simulation
     // is driven by the primary's age, so each year the spouse's age is derived as
     // spouseAgeAtRetirement + (currentAge − retirementAge). Used for per-spouse
-    // age-65 deduction additions and the (older-spouse) RMD trigger. Phase 1 models
-    // a couple as pooled accounts, one shared life expectancy, and no survivor
-    // penalty — see docs/2-federal-tax-model.md.
+    // age-65 deduction additions and the (older-spouse) RMD trigger. Couples are
+    // modeled with pooled accounts — see docs/2-federal-tax-model.md.
     spouseAgeAtRetirement?: number;
+    // MFJ only: the spouse's own life expectancy, in THEIR age frame (not the
+    // household clock). Optional: scenarios saved before per-spouse mortality
+    // existed have no value, and default to the spouse's age in the year the
+    // primary reaches their own life expectancy — i.e. the old shared horizon,
+    // so a previously saved plan recomputes to exactly the same numbers.
+    // The simulation runs to the LATER of the two deaths, and the first death
+    // triggers the survivor transition (MFJ→single, one Social Security check,
+    // one healthcare track). See lib/calculations/household.ts.
+    spouseLifeExpectancy?: number;
 }
 
 export interface RetirementPhase {

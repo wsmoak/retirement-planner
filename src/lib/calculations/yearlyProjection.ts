@@ -15,6 +15,7 @@ import { generateAccountReturns } from '@/lib/calculations/random';
 import { RMD_START_AGE } from '@/lib/calculations/rmd';
 import { computeStateTax, type StateTaxInputs } from '@/lib/calculations/stateTax';
 import { getStateTaxRules } from '@/lib/calculations/stateTaxRules';
+import { resolveHousehold, simulationHorizon } from '@/lib/calculations/household';
 
 export interface YearlyProjection {
     age: number;
@@ -95,21 +96,19 @@ export function calculateYearlyProjection(
     // The standard-deduction floor is scaled by the same inflation that grows income
     // (deductions are inflation-indexed in reality); the SS provisional thresholds
     // inside the tax module stay frozen (the "tax torpedo").
-    const filingStatus = personal.filingStatus ?? 'single';
+    // Who is alive this year, and what that implies for filing status, whose age the
+    // tax code looks at, how many healthcare tracks there are, and how much the
+    // household still spends. `currentAge` remains the household CLOCK throughout —
+    // it keeps counting past a primary death, because phases, one-time expenses, and
+    // pension/rental/part-time start ages are all expressed in that frame. See
+    // household.ts for why the clock and the person must not be conflated.
+    const household = resolveHousehold(currentAge, personal);
+    const { filingStatus, filerAge, spouseAge, rmdAge, deceased } = household;
+
     const deductionInflationFactor = Math.pow(
         1 + simulation.generalInflationRate,
         Math.max(0, currentAge - personal.retirementAge)
     );
-    // MFJ: the spouse's age this year, derived from their age at the primary's
-    // retirement (the loop is driven by the primary's age). Undefined for single.
-    const spouseAge =
-        filingStatus === 'married_joint' && personal.spouseAgeAtRetirement !== undefined
-            ? personal.spouseAgeAtRetirement + (currentAge - personal.retirementAge)
-            : undefined;
-    // Pooled accounts → one household RMD keyed to the OLDER spouse's age, beginning at
-    // the flat RMD_START_AGE (75; see rmd.ts). The older spouse drives the trigger so the
-    // pooled balance starts distributing no later than required.
-    const rmdAge = spouseAge !== undefined ? Math.max(currentAge, spouseAge) : currentAge;
 
     // STEP 2: Calculate income
     const incomeResult = calculateYearlyIncome(
@@ -120,7 +119,10 @@ export function calculateYearlyProjection(
         income.rentalIncome,
         simulation.generalInflationRate,
         income.spouseSocialSecurity,
-        spouseAge
+        // The NOTIONAL spouse age: a survivor inherits the larger benefit, and that
+        // benefit keeps receiving COLA, so it must go on being computed after a death.
+        household.spouseAgeNotional,
+        deceased
     );
 
     // STEP 3: Calculate expenses
@@ -133,7 +135,9 @@ export function calculateYearlyProjection(
         healthcare.medicare,
         simulation.generalInflationRate,
         simulation.healthcareInflationRate,
-        spouseAge
+        spouseAge,
+        household.spendingFactor,
+        filerAge
     );
 
     // STEP 4: Calculate initial taxes on fixed income
@@ -146,7 +150,9 @@ export function calculateYearlyProjection(
         },
         tax.combinedEffectiveRate,
         income.socialSecurity.taxablePercentage,
-        currentAge,
+        // The LIVING filer's age — the age-65 addition and senior bonus belong to
+        // whoever is actually alive to claim them.
+        filerAge,
         year,
         deductionInflationFactor,
         filingStatus,
@@ -166,7 +172,9 @@ export function calculateYearlyProjection(
     const stateInputsBase: StateTaxInputs = {
         year,
         filingStatus,
-        age: currentAge,
+        // State age-based retirement exclusions (GA's tiers, VA's age deduction,
+        // NY's over-59½ benefit) are scoped to a person, so they follow the survivor.
+        age: filerAge,
         spouseAge,
         governmentPensionIncome: incomeResult.governmentPensionIncome,
         privatePensionIncome: incomeResult.pensions - incomeResult.governmentPensionIncome,
@@ -194,7 +202,9 @@ export function calculateYearlyProjection(
     // STEP 6: Execute withdrawals (HSA-aware)
     if (cashFlowGap > 0) {
         withdrawalResult = executeWithdrawals(
-            currentAge,
+            // Person-scoped inside: the standard-deduction floor and the HSA age-65
+            // non-medical rule both belong to the living account owner.
+            filerAge,
             cashFlowGap,
             currentBalances,
             expensesResult.healthcarePremiums + expensesResult.healthcareOutOfPocket,  // total healthcare cost
@@ -291,7 +301,7 @@ export function calculateYearlyProjection(
         income.socialSecurity.taxablePercentage,
         accounts.taxable.costBasisPercentage || 0.70,
         incomeResult.partTimePayrollTax,
-        currentAge,
+        filerAge,
         year,
         deductionInflationFactor,
         hsaNonMedicalWithdrawal,
@@ -436,7 +446,12 @@ export function calculateYearlyProjection(
 }
 
 /**
- * Runs ONLY from retirement age to life expectancy (with HSA).
+ * Runs ONLY the retirement years (with HSA).
+ *
+ * For a single filer that is retirement age → life expectancy. For a couple it runs
+ * to the LATER of the two deaths: the plan has to stay funded until the last person
+ * is gone, and the survivor's years between the two deaths are exactly the ones a
+ * single shared horizon models worst.
  */
 export function runCompleteSimulation(
     inputs: UserInputs,
@@ -460,8 +475,10 @@ export function runCompleteSimulation(
 
     let ageOfDepletion: number | null = null;
 
-    // Simulate ONLY retirement years
-    for (let age = personal.retirementAge; age <= personal.lifeExpectancy; age++) {
+    // Simulate ONLY retirement years, through the last surviving member.
+    const horizon = simulationHorizon(personal);
+
+    for (let age = personal.retirementAge; age <= horizon; age++) {
         const year = 2026 + (age - personal.retirementAge);
 
         const projection = calculateYearlyProjection(
@@ -488,7 +505,8 @@ export function runCompleteSimulation(
         }
     }
 
-    // Success means the portfolio funded all spending through life expectancy —
+    // Success means the portfolio funded all spending through the horizon (the last
+    // death for a couple, life expectancy for a single filer) —
     // i.e., it never hit the depletion threshold (isPortfolioDepleted, < $100).
     // NOTE: do NOT use `finalBalance > 0`. Depleted runs can strand a few dollars
     // (the withdrawal engine ignores balances under $10, and reinvested-surplus

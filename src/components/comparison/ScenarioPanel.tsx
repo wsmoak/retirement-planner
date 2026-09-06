@@ -1,4 +1,5 @@
 import type { SavedScenario } from '@/lib/storage/scenarioStorage';
+import { simulationHorizon } from '@/lib/calculations/household';
 import { Info } from 'lucide-react';
 import {
     Tooltip,
@@ -58,8 +59,10 @@ export function ScenarioPanel({ scenario, side }: ScenarioPanelProps) {
                         <span className="ml-2 font-medium">{inputs.personal.retirementAge}</span>
                     </div>
                     <div>
-                        <span className="text-gray-600">Life Expectancy:</span>
-                        <span className="ml-2 font-medium">{inputs.personal.lifeExpectancy}</span>
+                        <span className="text-gray-600">
+                            {inputs.personal.filingStatus === 'married_joint' ? 'Plan Ends At:' : 'Life Expectancy:'}
+                        </span>
+                        <span className="ml-2 font-medium">{simulationHorizon(inputs.personal)}</span>
                     </div>
                     <div>
                         <span className="text-gray-600">Starting Portfolio:</span>
@@ -68,7 +71,7 @@ export function ScenarioPanel({ scenario, side }: ScenarioPanelProps) {
                     <div>
                         <span className="text-gray-600">Retirement Duration:</span>
                         <span className="ml-2 font-medium">
-                            {inputs.personal.lifeExpectancy - inputs.personal.retirementAge} years
+                            {simulationHorizon(inputs.personal) - inputs.personal.retirementAge} years
                         </span>
                     </div>
                 </div>

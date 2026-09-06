@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { runCompleteSimulation } from './yearlyProjection';
 import { createSeededRNG } from './random';
-import { DEFAULT_VALUES } from '../constants';
+import { DEFAULT_VALUES, SURVIVOR_SPENDING_FACTOR } from '../constants';
 import type { UserInputs } from '@/types';
 
 /** Deep-ish clone of the defaults with per-test overrides. */
@@ -529,5 +529,146 @@ describe('state tax', () => {
             const rhs = p.expenses.total + p.taxes.total + p.netCashFlow;
             expect(lhs).toBeCloseTo(rhs, 4);
         }
+    });
+});
+
+describe('runCompleteSimulation — per-spouse life expectancy & the survivor transition', () => {
+    /**
+     * Couple retires the same year: primary 67, spouse 65 (a constant 2-year gap).
+     * Phase boundaries are placed so the death year lands mid-phase, keeping the
+     * spending comparison free of a phase step.
+     */
+    function survivorPlan(spouseLifeExpectancy?: number): UserInputs {
+        const inputs = makeInputs();
+        inputs.personal.retirementAge = 67;
+        inputs.personal.lifeExpectancy = 95;
+        inputs.personal.filingStatus = 'married_joint';
+        inputs.personal.spouseAgeAtRetirement = 65;
+        if (spouseLifeExpectancy !== undefined) {
+            inputs.personal.spouseLifeExpectancy = spouseLifeExpectancy;
+        }
+        inputs.phases = [
+            { name: 'go_go', startAge: 67, endAge: 74, annualSpending: 70_000 },
+            { name: 'slow_go', startAge: 75, endAge: 85, annualSpending: 60_000 },
+            { name: 'no_go', startAge: 86, endAge: 95, annualSpending: 50_000 },
+        ];
+        inputs.accounts.taxDeferred.balanceAtRetirement = 2_000_000;
+        inputs.accounts.roth.balanceAtRetirement = 500_000;
+        inputs.accounts.taxable.balanceAtRetirement = 500_000;
+        inputs.accounts.hsa.balanceAtRetirement = 0;
+        inputs.income.socialSecurity.monthlyBenefitAtFRA = 3_000;
+        inputs.income.socialSecurity.claimingAge = 67;
+        inputs.income.spouseSocialSecurity = {
+            monthlyBenefitAtFRA: 1_500, claimingAge: 67, colaRate: 0.03, taxablePercentage: 0.85,
+        };
+        inputs.simulation.returnStdDeviation = 0;
+        inputs.withdrawalStrategy.strategy = 'standard';
+        return inputs;
+    }
+
+    // Spouse (65 at retirement) lives to 80 → last alive at clock 82, gone from 83.
+    const DEATH_CLOCK_AGE = 83;
+    const at = (r: ReturnType<typeof runCompleteSimulation>, clockAge: number) =>
+        r.projections.find(p => p.age === clockAge)!;
+
+    it('REGRESSION: omitting spouseLifeExpectancy reproduces the old shared horizon exactly', () => {
+        const legacy = runCompleteSimulation(survivorPlan(), createSeededRNG(7));
+        // The legacy default puts the spouse's death in the same year as the primary's,
+        // so an explicit equivalent must produce identical output.
+        const explicit = runCompleteSimulation(survivorPlan(93), createSeededRNG(7));
+        expect(legacy.projections.length).toBe(explicit.projections.length);
+        expect(legacy.finalBalance).toBeCloseTo(explicit.finalBalance, 6);
+        expect(legacy.projections.map(p => p.taxes.total))
+            .toEqual(explicit.projections.map(p => p.taxes.total));
+    });
+
+    it('runs to the LAST death when the spouse outlives the primary', () => {
+        const inputs = survivorPlan(90);
+        inputs.personal.lifeExpectancy = 85;
+        // Spouse reaches 90 at clock age 67 + (90 - 65) = 92.
+        const r = runCompleteSimulation(inputs, createSeededRNG(7));
+        expect(r.projections[r.projections.length - 1].age).toBe(92);
+        expect(r.projections.length).toBe(92 - 67 + 1);
+    });
+
+    it('does not shorten the run when the spouse dies first', () => {
+        const r = runCompleteSimulation(survivorPlan(80), createSeededRNG(7));
+        expect(r.projections[r.projections.length - 1].age).toBe(95);
+    });
+
+    it('drops the smaller Social Security check at the first death', () => {
+        const r = runCompleteSimulation(survivorPlan(80), createSeededRNG(7));
+        const before = at(r, DEATH_CLOCK_AGE - 1).income.socialSecurity;
+        const after = at(r, DEATH_CLOCK_AGE).income.socialSecurity;
+        // Two checks (3000 + 1500) become the larger one alone, so roughly a third of
+        // the household benefit disappears — far more than one year of COLA adds back.
+        expect(after).toBeLessThan(before * 0.75);
+        expect(after).toBeGreaterThan(0);
+    });
+
+    it('drops to one healthcare track at the first death', () => {
+        const r = runCompleteSimulation(survivorPlan(80), createSeededRNG(7));
+        const before = at(r, DEATH_CLOCK_AGE - 1).expenses.healthcarePremiums;
+        const after = at(r, DEATH_CLOCK_AGE).expenses.healthcarePremiums;
+        // Both are past 65, so the two tracks are equal — one leaving halves the cost
+        // (before healthcare inflation adds a little back).
+        expect(after).toBeLessThan(before * 0.6);
+        expect(after).toBeGreaterThan(0);
+    });
+
+    it('steps household living expenses down to the survivor factor', () => {
+        const r = runCompleteSimulation(survivorPlan(80), createSeededRNG(7));
+        const before = at(r, DEATH_CLOCK_AGE - 1).expenses.living;
+        const after = at(r, DEATH_CLOCK_AGE).expenses.living;
+        // Same phase either side, so the only movements are the factor and one year
+        // of general inflation.
+        const inflation = 1 + DEFAULT_VALUES.simulation.generalInflationRate;
+        expect(after / before).toBeCloseTo(SURVIVOR_SPENDING_FACTOR * inflation, 4);
+    });
+
+    it('keeps the household clock intact across a PRIMARY death', () => {
+        const inputs = survivorPlan(95);
+        inputs.personal.lifeExpectancy = 80;   // primary dies first, at clock 80
+        // A one-time expense keyed to the user's own age frame must still fire on time.
+        inputs.oneTimeExpenses = [{ id: '1', description: 'Roof', amount: 30_000, age: 88 }];
+        const r = runCompleteSimulation(inputs, createSeededRNG(7));
+        expect(at(r, 88).expenses.oneTimeExpenses).toBeGreaterThan(0);
+        expect(at(r, 87).expenses.oneTimeExpenses).toBe(0);
+    });
+
+    it('taxes the survivor at a higher effective rate on the same withdrawals', () => {
+        // Isolate the filing-status flip: no Social Security and no healthcare, so the
+        // only things separating the two runs at the same clock age are the standard
+        // deduction (MFJ vs single) and the survivor spending factor.
+        const strip = (i: UserInputs) => {
+            i.income.socialSecurity.monthlyBenefitAtFRA = 0;
+            i.income.spouseSocialSecurity = {
+                monthlyBenefitAtFRA: 0, claimingAge: 67, colaRate: 0.03, taxablePercentage: 0.85,
+            };
+            i.healthcare.preMedicare = { monthlyPremium: 0, annualOutOfPocket: 0 };
+            i.healthcare.medicare = {
+                ...i.healthcare.medicare,
+                partBStandardPremium: 0, partDPremium: 0, medigapPremium: 0,
+                expectIRMAA: false, irmaaSurcharge: 0,
+                outOfPocketByPhase: { phase1: 0, phase2: 0, phase3: 0 },
+            };
+            return i;
+        };
+        const widowed = runCompleteSimulation(strip(survivorPlan(80)), createSeededRNG(7));
+        const intact = runCompleteSimulation(strip(survivorPlan()), createSeededRNG(7));
+
+        const w = at(widowed, DEATH_CLOCK_AGE);
+        const i = at(intact, DEATH_CLOCK_AGE);
+
+        // By this age the RMD on the pooled balance exceeds the cash-flow gap, so BOTH
+        // runs are forced to withdraw exactly the same amount — the balances entering
+        // the death year are still identical. That makes this a clean controlled
+        // comparison: same withdrawal, same ordinary income, only the filing status
+        // differs.
+        expect(w.portfolio.withdrawals.total).toBeCloseTo(i.portfolio.withdrawals.total, 6);
+
+        // And the survivor pays MORE tax on that identical income, because the standard
+        // deduction roughly halved. That is the survivor's penalty, in one number.
+        expect(w.taxes.total).toBeGreaterThan(i.taxes.total);
     });
 });

@@ -12,6 +12,7 @@ import { ScopeBadge } from '@/components/common/ScopeBadge';
 import { RMD_START_AGE } from '@/lib/calculations/rmd';
 import { isStateModeled } from '@/lib/calculations/stateTaxRules';
 import { stateTaxDisclosure } from '@/lib/calculations/stateTax';
+import { simulationHorizon } from '@/lib/calculations/household';
 
 type StrategyKey = 'standard' | 'tax_smart' | 'roth_conversion';
 
@@ -226,7 +227,7 @@ export function Screen4Assumptions() {
                     </p>
                     <RetirementTimeline
                         retirementAge={personal.retirementAge}
-                        lifeExpectancy={personal.lifeExpectancy}
+                        lifeExpectancy={simulationHorizon(personal)}
                         ssClaimingAge={income.socialSecurity.claimingAge}
                         rmdAge={RMD_START_AGE}
                         showIrmaa={isAdvanced}

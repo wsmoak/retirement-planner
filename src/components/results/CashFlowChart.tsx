@@ -17,6 +17,7 @@ import type { SimulationResults } from '@/types'
 import type { UserInputs } from '@/types';
 import { formatMoney } from '@/lib/format';
 import { RMD_START_AGE } from '@/lib/calculations/rmd';
+import { simulationHorizon } from '@/lib/calculations/household';
 
 interface CashFlowChartProps {
     results: SimulationResults;
@@ -291,7 +292,7 @@ export default function CashFlowChart({ results, inputs }: CashFlowChartProps) {
                                 <p className="mt-1">
                                     Depletes at age{' '}
                                     {results.selectedRuns.p50.projections.find(p => p.portfolioDepleted)?.age ||
-                                        inputs.personal.lifeExpectancy}
+                                        simulationHorizon(inputs.personal)}
                                 </p>
                             </div>
                             <div>

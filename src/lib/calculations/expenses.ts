@@ -318,7 +318,20 @@ export function calculateHealthcareCosts(
     medicare: MedicareCosts,
     phases: [RetirementPhase, RetirementPhase, RetirementPhase],
     healthcareInflationRate: number,
-    spouseAge?: number
+    spouseAge?: number,
+    /**
+     * The age of the person the FIRST track insures. Defaults to `currentAge`,
+     * which is the primary while they are alive.
+     *
+     * This exists because `currentAge` is doing two jobs at once: it is the
+     * household clock (driving the phase and the years-since-retirement inflation
+     * below) AND the primary's own age (driving Medicare timing). Those come apart
+     * the moment the primary dies — the clock must keep running, but the person it
+     * described is gone and the surviving spouse becomes the only one to insure.
+     * Passing the survivor's age here keeps the clock intact while moving the
+     * person track onto whoever is actually alive.
+     */
+    filerAge: number = currentAge
 ): {
     premiums: number;
     outOfPocket: number;
@@ -336,7 +349,7 @@ export function calculateHealthcareCosts(
     const yearsSinceRetirement = currentAge - retirementAge;
 
     const you = calculatePersonHealthcare(
-        currentAge, yearsSinceRetirement, preMedicare, medicare, phase, healthcareInflationRate
+        filerAge, yearsSinceRetirement, preMedicare, medicare, phase, healthcareInflationRate
     );
     let premiums = you.premiums;
     let outOfPocket = you.outOfPocket;
@@ -418,7 +431,16 @@ export function calculateYearlyExpenses(
     generalInflationRate: number,
     healthcareInflationRate: number,
     /** MFJ only: the spouse's age this year — adds a second per-person healthcare track. */
-    spouseAge?: number
+    spouseAge?: number,
+    /**
+     * Multiplier on phase-based living expenses. 1 while the household is intact,
+     * `SURVIVOR_SPENDING_FACTOR` once it is down to one person. Deliberately not
+     * applied to one-time expenses — those are discrete planned events (a roof, a
+     * car), not a per-head running cost.
+     */
+    spendingFactor: number = 1,
+    /** The living person the first healthcare track insures. Defaults to the primary. */
+    filerAge: number = currentAge
 ): {
     living: number;
     healthcarePremiums: number;
@@ -431,7 +453,7 @@ export function calculateYearlyExpenses(
         retirementAge,
         phases,
         generalInflationRate
-    );
+    ) * spendingFactor;
 
     const healthcare = calculateHealthcareCosts(
         currentAge,
@@ -440,7 +462,8 @@ export function calculateYearlyExpenses(
         medicare,
         phases,
         healthcareInflationRate,
-        spouseAge
+        spouseAge,
+        filerAge
     );
 
     const oneTime = calculateOneTimeExpenses(
