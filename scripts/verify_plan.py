@@ -186,9 +186,22 @@ class Plan:
         self.state_mode = inputs["tax"].get("stateTaxMode") or "manual"
         self.ss_cap = self.ss.get("taxablePercentage", TAX_RULES["ss_max_taxable_fraction"])
         self.cost_basis = inputs["accounts"]["taxable"].get("costBasisPercentage", 0.70)
-        # MFJ (Phase 1): spouse SS stream + spouse age for per-spouse deduction seniors.
+        # MFJ: spouse SS stream + spouse age for per-spouse deduction seniors.
         self.spouse_ss = inputs["income"].get("spouseSocialSecurity")
         self.spouse_age_at_ret = inputs["personal"].get("spouseAgeAtRetirement")
+        # Per-spouse mortality. `spouseLifeExpectancy` is absent on plans saved before the
+        # survivor model existed; it then defaults to the spouse's age in the year the primary
+        # reaches their own life expectancy — the old shared horizon, so such a plan verifies
+        # exactly as it always did. Mirrors resolveSpouseLifeExpectancy in
+        # src/lib/calculations/household.ts.
+        self.life_expectancy = inputs["personal"]["lifeExpectancy"]
+        if self.filing != "married_joint" or self.spouse_age_at_ret is None:
+            self.spouse_life_expectancy = None
+        else:
+            self.spouse_life_expectancy = inputs["personal"].get(
+                "spouseLifeExpectancy",
+                self.spouse_age_at_ret + (self.life_expectancy - self.retirement_age),
+            )
 
     # -- phase helpers --
     def get_phase(self, age: int) -> dict:
@@ -207,11 +220,56 @@ class Plan:
             return 0.0
         return w["annualIncome"]
 
-    def spouse_age(self, age: int) -> int | None:
-        """Spouse's age this year (MFJ), derived from their age at the primary's retirement."""
+    # -- survivorship (mirrors src/lib/calculations/household.ts) --
+    #
+    # `age` throughout this file is the HOUSEHOLD CLOCK — the primary's age frame, in which
+    # the user entered phases, one-time expenses, and pension/rental/part-time start ages. It
+    # keeps counting past a primary death (it is only retirement_age + n). The person-level
+    # facts come from the helpers below, so the clock is never re-based.
+    #
+    # Convention: a person lives THROUGH their life-expectancy year and is gone after it.
+
+    def spouse_age_notional(self, age: int) -> int | None:
+        """Spouse's age ignoring death — kept so a survivor benefit can go on receiving COLA."""
         if self.filing != "married_joint" or self.spouse_age_at_ret is None:
             return None
         return self.spouse_age_at_ret + (age - self.retirement_age)
+
+    def primary_alive(self, age: int) -> bool:
+        return age <= self.life_expectancy
+
+    def spouse_alive(self, age: int) -> bool:
+        sp = self.spouse_age_notional(age)
+        return sp is not None and sp <= self.spouse_life_expectancy
+
+    def deceased(self, age: int) -> str | None:
+        """'primary', 'spouse', or None while both are alive (always None for a single filer)."""
+        if self.spouse_age_notional(age) is None:
+            return None
+        if self.primary_alive(age) and self.spouse_alive(age):
+            return None
+        return "spouse" if self.primary_alive(age) else "primary"
+
+    def filing_at(self, age: int) -> str:
+        """Filing status THIS year — single from the first death onward."""
+        return "single" if self.deceased(age) else self.filing
+
+    def filer_age(self, age: int) -> int:
+        """The LIVING filer's age, for anything the tax code scopes to a person."""
+        if self.deceased(age) == "primary":
+            return self.spouse_age_notional(age)
+        return age
+
+    def spending_factor(self, age: int) -> float:
+        """Living-expense multiplier; SURVIVOR_SPENDING_FACTOR in src/lib/constants.ts."""
+        return 0.75 if self.deceased(age) else 1.0
+
+    def spouse_age(self, age: int) -> int | None:
+        """Spouse's age as the per-spouse logic should see it: None once the household is
+        down to one person, which is what collapses two-person tracks to one."""
+        if self.deceased(age) is not None:
+            return None
+        return self.spouse_age_notional(age)
 
     def _ss_benefit(self, s: dict, own_age: int) -> float:
         """Base SS benefit (claiming factor + COLA), no earnings test."""
@@ -222,9 +280,10 @@ class Plan:
         return s["monthlyBenefitAtFRA"] * 12 * factor * (1 + s["colaRate"]) ** (own_age - claiming)
 
     def exp_ss(self, age: int) -> float:
-        # Primary benefit with the earnings test.
+        # Primary benefit with the earnings test. Part-time work belongs to the primary, so
+        # it (and the test) stop at their death.
         primary = self._ss_benefit(self.ss, age)
-        earnings = self.part_time_income(age)
+        earnings = 0.0 if self.deceased(age) == "primary" else self.part_time_income(age)
         if age < FULL_RETIREMENT_AGE and earnings > 0:
             if age == FULL_RETIREMENT_AGE:
                 over = max(0.0, earnings - EARNINGS_TEST_IN_FRA_YEAR)
@@ -233,10 +292,14 @@ class Plan:
                 over = max(0.0, earnings - EARNINGS_TEST_BEFORE_FRA)
                 primary = max(0.0, primary - over / 2)
 
-        # Spouse benefit (MFJ, no earnings test) → household total.
-        sp_age = self.spouse_age(age)
+        # Spouse benefit (MFJ, no earnings test). Uses the NOTIONAL age so the amount stays
+        # available as the basis for a survivor benefit after the spouse has died.
+        sp_age = self.spouse_age_notional(age)
         spouse = (self._ss_benefit(self.spouse_ss, sp_age)
                   if self.spouse_ss is not None and sp_age is not None else 0.0)
+        # Both checks while the couple is intact; the LARGER one alone once it is not.
+        if self.deceased(age):
+            return max(primary, spouse)
         return primary + spouse
 
     def exp_pensions(self, age: int) -> float:
@@ -272,7 +335,9 @@ class Plan:
         if age < self.retirement_age:
             return 0.0
         phase = self.get_phase(age)
-        return phase["annualSpending"] * (1 + self.gen_infl) ** self.yrs_from_retirement(age)
+        return (phase["annualSpending"]
+                * (1 + self.gen_infl) ** self.yrs_from_retirement(age)
+                * self.spending_factor(age))
 
     # Healthcare is per-person: pre-Medicare inflates by calendar years since retirement
     # (same for both spouses — they retire the same year); Medicare inflates from each
@@ -304,7 +369,9 @@ class Plan:
         if age < self.retirement_age:
             return 0.0
         yrs_since_ret = age - self.retirement_age
-        total = self._person_hc_premiums(age, yrs_since_ret)
+        # The first track insures the LIVING filer — after a primary death that is the
+        # surviving spouse, whose Medicare timing runs off their own age, not the clock.
+        total = self._person_hc_premiums(self.filer_age(age), yrs_since_ret)
         sp_age = self.spouse_age(age)
         if sp_age is not None:
             total += self._person_hc_premiums(sp_age, yrs_since_ret)
@@ -315,18 +382,23 @@ class Plan:
             return 0.0
         yrs_since_ret = age - self.retirement_age
         phase_name = self.get_phase(age)["name"]
-        total = self._person_hc_oop(age, yrs_since_ret, phase_name)
+        total = self._person_hc_oop(self.filer_age(age), yrs_since_ret, phase_name)
         sp_age = self.spouse_age(age)
         if sp_age is not None:
             total += self._person_hc_oop(sp_age, yrs_since_ret, phase_name)
         return total
 
     # -- taxes --
-    def taxable_social_security(self, ss_benefit: float, other_income: float) -> float:
-        """IRS provisional-income formula, capped at the user's max fraction."""
+    def taxable_social_security(
+        self, ss_benefit: float, other_income: float, filing: str
+    ) -> float:
+        """IRS provisional-income formula, capped at the user's max fraction.
+
+        `filing` is the status for the year in question, not the plan's — a survivor files
+        single against the lower thresholds."""
         if ss_benefit <= 0:
             return 0.0
-        th = TAX_RULES["ss_thresholds"][self.filing]
+        th = TAX_RULES["ss_thresholds"][filing]
         base, second = th["base"], th["second"]
         provisional = other_income + 0.5 * ss_benefit
         if provisional <= base:
@@ -340,10 +412,13 @@ class Plan:
 
     def standard_deduction(self, age: int, year: int) -> float:
         sp_age = self.spouse_age(age)
-        seniors = (1 if age >= 65 else 0) + (1 if sp_age is not None and sp_age >= 65 else 0)
+        filing = self.filing_at(age)
+        # The age-65 addition and senior bonus belong to whoever is alive to claim them.
+        seniors = ((1 if self.filer_age(age) >= 65 else 0)
+                   + (1 if sp_age is not None and sp_age >= 65 else 0))
         infl = (1 + self.gen_infl) ** max(0, age - self.retirement_age)
-        ded = (TAX_RULES["standard_deduction"][self.filing]
-               + TAX_RULES["additional_65"][self.filing] * seniors) * infl
+        ded = (TAX_RULES["standard_deduction"][filing]
+               + TAX_RULES["additional_65"][filing] * seniors) * infl
         if seniors and year <= TAX_RULES["senior_bonus_last_year"]:
             ded += TAX_RULES["senior_bonus"] * seniors
         return ded
@@ -358,7 +433,9 @@ class Plan:
 
         other_excl_ss = (inc["pensions"] + inc["partTimeWork"] + inc["rentalIncome"]
                          + ordinary_wd + brokerage_gain)
-        taxable_ss = self.taxable_social_security(inc["socialSecurity"], other_excl_ss)
+        taxable_ss = self.taxable_social_security(
+            inc["socialSecurity"], other_excl_ss, self.filing_at(int(row["age"]))
+        )
 
         fixed_base = taxable_ss + inc["pensions"] + inc["partTimeWork"] + inc["rentalIncome"]
         wd_base = ordinary_wd + brokerage_gain
@@ -377,18 +454,26 @@ class Plan:
         spouse's age — so distributions begin no later than required (docs/4-married-filing-jointly.md).
         That decision is only visible end-to-end here, which is why it is re-derived rather than
         assumed.
+
+        After a first death the trigger follows the SURVIVOR alone: a spouse beneficiary may
+        treat an inherited IRA as their own, so their schedule is the real one. Keying it to the
+        household clock instead would use a dead person's age — and once the primary is the one
+        who died, that age is both wrong and too high, over-distributing the pool.
         """
         sp_age = self.spouse_age(age)
-        rmd_age = max(age, sp_age) if sp_age is not None else age
+        if sp_age is not None:
+            rmd_age = max(age, sp_age)
+        else:
+            rmd_age = self.filer_age(age)
         if rmd_age < RMD_START_AGE:
             return 0.0
         divisor = RMD_DIVISORS.get(rmd_age, RMD_DIVISORS[100])
         return start_tax_deferred / divisor
 
     # -- state tax --
-    def _state_standard_deduction(self, rules: dict, year: int) -> float:
+    def _state_standard_deduction(self, rules: dict, year: int, filing: str) -> float:
         entry = pick_for_year(rules["standardDeduction"], year)
-        return entry["married"] if self.filing == "married_joint" else entry["single"]
+        return entry["married"] if filing == "married_joint" else entry["single"]
 
     def _count_at_least_age(self, age: int, min_age: int) -> int:
         """Taxpayers on the return who have reached `min_age`: 1 for single, 0-2 for MFJ."""
@@ -407,7 +492,7 @@ class Plan:
         eligible = self._count_at_least_age(age, benefit["minAge"])
         if eligible == 0:
             return 0.0
-        limit = benefit["threshold"]["married" if self.filing == "married_joint" else "single"]
+        limit = benefit["threshold"]["married" if self.filing_at(age) == "married_joint" else "single"]
         cap = benefit["perPerson"] * eligible
         return max(0.0, cap - benefit["reductionPerDollar"] * max(0.0, afagi - limit))
 
@@ -430,18 +515,18 @@ class Plan:
         exemption = rules.get("personalExemption")
         if exemption is None:
             return 0.0
-        filers = 2 if self.filing == "married_joint" else 1
+        filers = 2 if self.filing_at(age) == "married_joint" else 1
         return (exemption["perFiler"] * filers
                 + exemption["age65Addition"] * self._count_at_least_age(age, 65))
 
-    def _apply_rate(self, rate: dict, taxable: float) -> float:
+    def _apply_rate(self, rate: dict, taxable: float, filing: str) -> float:
         """Flat rate (GA), one bracket schedule (VA), or brackets by filing status (CA).
         `upTo: null` marks the top bracket."""
         if rate["kind"] == "flat":
             return taxable * rate["rate"]
 
         brackets = (
-            rate["married" if self.filing == "married_joint" else "single"]
+            rate["married" if filing == "married_joint" else "single"]
             if rate["kind"] == "graduated_by_status"
             else rate["brackets"]
         )
@@ -485,7 +570,7 @@ class Plan:
         taxable income (the opposite ordering from Virginia's `personalExemption`). Phased out
         $6 (single/MFS) or $12 (married) per $2,500 increment of state AGI over the threshold,
         floored at $0 (R&TC §17054, docs/5-state-tax-model.md §4.4)."""
-        married = self.filing == "married_joint"
+        married = self.filing_at(age) == "married_joint"
         filers = 2 if married else 1
         base = credit["perFiler"] * filers + credit["age65Addition"] * self._count_at_least_age(age, 65)
 
@@ -528,7 +613,7 @@ class Plan:
         # have no such floor, so the key is absent there.
         threshold = rules.get("filingThreshold")
         if threshold is not None:
-            limit = threshold["married" if self.filing == "married_joint" else "single"]
+            limit = threshold["married" if self.filing_at(age) == "married_joint" else "single"]
             if agi < limit:
                 return 0.0
 
@@ -546,11 +631,11 @@ class Plan:
                 benefit_rules, age, government_pension, private_pension, wd["taxDeferred"]
             )
 
-        deduction = self._state_standard_deduction(rules, int(row["year"]))
+        deduction = self._state_standard_deduction(rules, int(row["year"]), self.filing_at(age))
         exemptions = self._personal_exemptions(rules, age)
         taxable = max(0.0, agi - benefit - deduction - exemptions)
 
-        bracket_tax = self._apply_rate(rules["rate"], taxable)
+        bracket_tax = self._apply_rate(rules["rate"], taxable, self.filing_at(age))
 
         credit_rules = rules.get("exemptionCredit")
         credit = self._ca_exemption_credit(credit_rules, age, agi) if credit_rules is not None else 0.0

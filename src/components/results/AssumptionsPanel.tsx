@@ -140,14 +140,16 @@ export default function AssumptionsPanel({ inputs }: AssumptionsPanelProps) {
                                     <li>
                                         <strong>Married filing jointly:</strong> both spouses' Social Security
                                         benefits are combined for the provisional-income formula, and accounts
-                                        are <strong>pooled</strong> with one RMD start age (the older spouse's).
-                                        The survivor's penalty is <strong>not</strong> modeled — both spouses are
-                                        assumed to live to the shared life expectancy.
+                                        are <strong>pooled</strong> with one RMD start age (the older spouse's,
+                                        then the survivor's). The <strong>survivor's penalty is modeled</strong>:
+                                        from the first death the household files single on roughly half the
+                                        standard deduction, so late-retirement tax rises even as income falls.
                                     </li>
                                     <li>
                                         <strong>A spouse's earned income is not modeled.</strong> Part-time work is
                                         treated entirely as <em>your</em> wages, so it drives only your Social
-                                        Security earnings test; the spouse's benefit gets no earnings test at all.
+                                        Security earnings test; the spouse's benefit gets no earnings test at all,
+                                        and the work income stops if you are the first to die.
                                         Pension and rental start ages also run on your timeline, not the spouse's.
                                     </li>
                                 </>
@@ -296,7 +298,7 @@ export default function AssumptionsPanel({ inputs }: AssumptionsPanelProps) {
                         <h4 className="font-semibold mb-2">Life Events:</h4>
                         <ul className="list-disc list-inside space-y-1">
                             <li><strong>Long-term care costs</strong> (major expense!)</li>
-                            <li>Survivor's penalty (surviving-spouse tax jump on first death)</li>
+                            <li>Probabilistic mortality (the survivor's penalty <em>is</em> modeled, but from two fixed ages you choose — not a distribution)</li>
                             <li>Inheritance or windfalls</li>
                             <li>Major medical events</li>
                             <li>Divorce, remarriage, or family changes</li>

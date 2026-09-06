@@ -159,7 +159,7 @@ export function Screen1Plan() {
                 </div>
                 <p className="text-xs text-gray-600 mt-2">
                     {isMFJ
-                        ? 'Models both spouses’ Social Security and the joint standard deduction. Accounts are pooled; the survivor’s penalty is not modeled — see Disclosures.'
+                        ? 'Models both spouses’ Social Security, the joint standard deduction, and the survivor’s penalty at the first death. Accounts are pooled — see Disclosures.'
                         : 'Applies the single-filer standard deduction and Social Security thresholds.'}
                 </p>
             </div>

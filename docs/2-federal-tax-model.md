@@ -125,9 +125,12 @@ annual-review procedure; the nine no-income-tax states and Georgia are live, Vir
 
 ### Locked-in scope (planning decisions)
 
-- **MFJ = two-person, no survivor penalty.** Model a spouse's age and Social Security plus
-  the MFJ tax parameters, and assume **both spouses are alive through the shared
-  life-expectancy horizon**. The survivor's penalty is deferred to Phase 3.
+- **MFJ = two-person, with the survivor penalty.** Model a spouse's age, life expectancy, and
+  Social Security plus the MFJ tax parameters. Each spouse has **their own life expectancy**;
+  the simulation runs to the later death, and the first death flips the household to single
+  filing, stops the smaller Social Security check, drops to one healthcare track, and steps
+  living expenses down. What is still deferred is **probabilistic** mortality — the two death
+  ages are chosen, not drawn.
 - **Accounts are pooled.** One combined set of accounts and **one representative RMD age (the
   older spouse's)** — spouses do not hold separately tracked balances. Documented as a
   simplification both here and on the Disclosures page.
@@ -162,9 +165,9 @@ the *second person*:
 - **Disclosures + docs.** Surface the pooled-accounts / one-RMD-age and no-survivor-penalty
   simplifications, and make the "single filer only" copy conditional on the selected status.
 
-Simplifications (disclosed): pooled accounts with one RMD age; both spouses assumed alive to
-the shared horizon (no survivor penalty, no mortality model); the spouse has no separate
-part-time, pension, or HSA inputs in this phase.
+Simplifications (disclosed): pooled accounts with one RMD age; deterministic death ages rather
+than a mortality distribution; the spouse has no separate part-time, pension, or HSA inputs in
+this phase.
 
 ### Phase 2 — Per-state income-tax modules (moved, partly shipped)
 

@@ -124,7 +124,7 @@ export default function LandingPage() {
                         <div>
                             <p className="text-sm font-semibold text-amber-700 uppercase tracking-wide mb-3">Not the right tool for</p>
                             <ul className="space-y-2 text-slate-700">
-                                <li className="flex items-start gap-2"><XCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-1" /><span>Survivor benefits or per-spouse account strategies</span></li>
+                                <li className="flex items-start gap-2"><XCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-1" /><span>Per-spouse account strategies or spousal Social Security top-ups</span></li>
                                 <li className="flex items-start gap-2"><XCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-1" /><span>Long-term care or estate planning</span></li>
                                 <li className="flex items-start gap-2"><XCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-1" /><span>Replacing a CFP or professional advice</span></li>
                             </ul>
