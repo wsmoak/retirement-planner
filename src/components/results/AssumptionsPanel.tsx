@@ -146,11 +146,17 @@ export default function AssumptionsPanel({ inputs }: AssumptionsPanelProps) {
                                         standard deduction, so late-retirement tax rises even as income falls.
                                     </li>
                                     <li>
-                                        <strong>A spouse's earned income is not modeled.</strong> Part-time work is
-                                        treated entirely as <em>your</em> wages, so it drives only your Social
-                                        Security earnings test; the spouse's benefit gets no earnings test at all,
-                                        and the work income stops if you are the first to die.
-                                        Pension and rental start ages also run on your timeline, not the spouse's.
+                                        <strong>Each spouse's earned income is their own.</strong> Your part-time
+                                        work is keyed to your ages and drives only your Social Security earnings
+                                        test; your spouse's work income is keyed to <em>their</em> ages and drives
+                                        only theirs. Each stops when its owner dies. Wages are pooled for tax, as
+                                        they are on a joint return.
+                                    </li>
+                                    <li>
+                                        <strong>There is still only one retirement date.</strong> A spouse who keeps
+                                        working is modeled as continuing to earn, not as retiring later — so the
+                                        simulation starts when <em>you</em> retire, and pension and rental start ages
+                                        run on your timeline rather than theirs.
                                     </li>
                                 </>
                             )}

@@ -85,3 +85,87 @@ describe('calculateGovernmentPensionIncome', () => {
         expect(calculateGovernmentPensionIncome(65, [govPension, privatePension])).toBeLessThan(total);
     });
 });
+
+describe('calculateYearlyIncome — spouse earned income', () => {
+    // She earns $80k from her own age 55 to 59 — a younger spouse still working full
+    // time, not "part-time work". Her ages, not the household clock.
+    const spouseWork: PartTimeWork = {
+        enabled: true, annualIncome: 80_000, startAge: 55, endAge: 59,
+    };
+
+    it('REGRESSION: omitting spouseWork leaves the household unchanged', () => {
+        const without = calculateYearlyIncome(67, primarySS, [], noWork, noRental, 0.03, spouseSS, 64);
+        const undef = calculateYearlyIncome(
+            67, primarySS, [], noWork, noRental, 0.03, spouseSS, 64, null, undefined
+        );
+        expect(undef.partTimeWork).toBe(without.partTimeWork);
+        expect(undef.socialSecurity).toBeCloseTo(without.socialSecurity, 10);
+    });
+
+    it('lands in the years keyed to HER age, not the clock', () => {
+        // Clock 62, spouse 57 → inside her 55-59 window.
+        const inside = calculateYearlyIncome(
+            62, primarySS, [], noWork, noRental, 0.03, spouseSS, 57, null, spouseWork
+        );
+        expect(inside.partTimeWork).toBe(80_000);
+
+        // Clock 65, spouse 60 → past her window, even though the clock is higher.
+        const outside = calculateYearlyIncome(
+            65, primarySS, [], noWork, noRental, 0.03, spouseSS, 60, null, spouseWork
+        );
+        expect(outside.partTimeWork).toBe(0);
+    });
+
+    it('sums both spouses\' wages and payroll tax into the household total', () => {
+        const hisWork: PartTimeWork = { enabled: true, annualIncome: 20_000, startAge: 62, endAge: 70 };
+        const r = calculateYearlyIncome(
+            62, primarySS, [], hisWork, noRental, 0.03, spouseSS, 57, null, spouseWork
+        );
+        expect(r.partTimeWork).toBe(100_000);
+        expect(r.partTimePayrollTax).toBeCloseTo(100_000 * 0.0765, 6);
+    });
+
+    it('applies the earnings test to HER benefit, using HER earnings', () => {
+        // Spouse aged 64 (below FRA) claiming at 62, earning $80k. Without the test her
+        // benefit would be the full reduced-claiming amount; with it, $80k is far over
+        // the limit so $1 is withheld per $2 of excess.
+        const claimingEarly: SocialSecurity = { ...spouseSS, claimingAge: 62 };
+        const working: PartTimeWork = { ...spouseWork, startAge: 60, endAge: 66 };
+
+        const withWork = calculateYearlyIncome(
+            69, primarySS, [], noWork, noRental, 0.03, claimingEarly, 64, null, working
+        );
+        const withoutWork = calculateYearlyIncome(
+            69, primarySS, [], noWork, noRental, 0.03, claimingEarly, 64
+        );
+        // Her check is smaller because SHE is working, and the household total falls with it.
+        expect(withWork.socialSecurity).toBeLessThan(withoutWork.socialSecurity);
+    });
+
+    it('does NOT let her earnings touch his benefit', () => {
+        // He claims early at 62 and is 64 — squarely in earnings-test territory — but he
+        // earns nothing. Only her wages exist, and they must not reduce his check.
+        const hisEarly: SocialSecurity = { ...primarySS, claimingAge: 62 };
+        const working: PartTimeWork = { ...spouseWork, startAge: 55, endAge: 66 };
+
+        const hisAlone = calculateYearlyIncome(64, hisEarly, [], noWork, noRental, 0.03);
+        const withHerWages = calculateYearlyIncome(
+            64, hisEarly, [], noWork, noRental, 0.03, undefined, 59, null, working
+        );
+        // No spouse SS configured, so the household benefit is his alone — unchanged.
+        expect(withHerWages.socialSecurity).toBeCloseTo(hisAlone.socialSecurity, 10);
+        // Her wages still show up as household income and payroll tax.
+        expect(withHerWages.partTimeWork).toBe(80_000);
+    });
+
+    it('stops her wages when she dies', () => {
+        const alive = calculateYearlyIncome(
+            62, primarySS, [], noWork, noRental, 0.03, spouseSS, 57, null, spouseWork
+        );
+        const dead = calculateYearlyIncome(
+            62, primarySS, [], noWork, noRental, 0.03, spouseSS, 57, 'spouse', spouseWork
+        );
+        expect(alive.partTimeWork).toBe(80_000);
+        expect(dead.partTimeWork).toBe(0);
+    });
+});

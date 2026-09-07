@@ -181,6 +181,9 @@ class Plan:
         self.pensions = inputs["income"].get("pensions", []) or []
         self.rental = inputs["income"]["rentalIncome"]
         self.part_time = inputs["income"]["partTimeWork"]
+        # The spouse's own earned income, in THEIR age frame. Absent on plans saved before
+        # it existed → the spouse earns nothing, exactly the previous behavior.
+        self.spouse_work = inputs["income"].get("spouseWork")
         self.pre_med = inputs["healthcare"]["preMedicare"]
         # Per-person pre-Medicare costs. Absent on plans saved before spouses could differ,
         # and then the spouse simply uses the primary's figures — the old behavior exactly.
@@ -362,24 +365,45 @@ class Plan:
         factor = SS_ADJUSTMENT_FACTORS.get(claiming, 1.0)
         return s["monthlyBenefitAtFRA"] * 12 * factor * (1 + s["colaRate"]) ** (own_age - claiming)
 
-    def exp_ss(self, age: int) -> float:
-        # Primary benefit with the earnings test. Part-time work belongs to the primary, so
-        # it (and the test) stop at their death.
-        primary = self._ss_benefit(self.ss, age)
-        earnings = 0.0 if self.deceased(age) == "primary" else self.part_time_income(age)
-        if age < FULL_RETIREMENT_AGE and earnings > 0:
-            if age == FULL_RETIREMENT_AGE:
-                over = max(0.0, earnings - EARNINGS_TEST_IN_FRA_YEAR)
-                primary = max(0.0, primary - over / 3)
-            else:
-                over = max(0.0, earnings - EARNINGS_TEST_BEFORE_FRA)
-                primary = max(0.0, primary - over / 2)
+    @staticmethod
+    def _apply_earnings_test(benefit: float, person_age: int, earnings: float) -> float:
+        """SS earnings test against ONE person's own earnings. No test at or after FRA."""
+        if person_age >= FULL_RETIREMENT_AGE or earnings <= 0:
+            return benefit
+        if person_age == FULL_RETIREMENT_AGE:
+            over = max(0.0, earnings - EARNINGS_TEST_IN_FRA_YEAR)
+            return max(0.0, benefit - over / 3)
+        over = max(0.0, earnings - EARNINGS_TEST_BEFORE_FRA)
+        return max(0.0, benefit - over / 2)
 
-        # Spouse benefit (MFJ, no earnings test). Uses the NOTIONAL age so the amount stays
-        # available as the basis for a survivor benefit after the spouse has died.
+    def spouse_work_income(self, age: int) -> float:
+        """Spouse's own wages this year. Their start/end ages are THEIR ages, so this is
+        evaluated against the notional spouse age, not the household clock."""
+        w = self.spouse_work
+        sp_age = self.spouse_age_notional(age)
+        if not w or not w.get("enabled") or sp_age is None:
+            return 0.0
+        if self.deceased(age) == "spouse":
+            return 0.0
+        if sp_age < w["startAge"] or sp_age > w["endAge"]:
+            return 0.0
+        return w["annualIncome"]
+
+    def exp_ss(self, age: int) -> float:
+        # Each person's earnings drive only THEIR OWN test, and stop at their own death.
+        primary = self._ss_benefit(self.ss, age)
+        primary_earnings = 0.0 if self.deceased(age) == "primary" else self.part_time_income(age)
+        primary = self._apply_earnings_test(primary, age, primary_earnings)
+
+        # Spouse benefit (MFJ) with their own earnings test. Uses the NOTIONAL age so the
+        # amount stays available as the basis for a survivor benefit after they have died —
+        # their work has stopped by then, so no test applies and the full benefit is used.
         sp_age = self.spouse_age_notional(age)
         spouse = (self._ss_benefit(self.spouse_ss, sp_age)
                   if self.spouse_ss is not None and sp_age is not None else 0.0)
+        if sp_age is not None:
+            spouse = self._apply_earnings_test(spouse, sp_age, self.spouse_work_income(age))
+
         # Both checks while the couple is intact; the LARGER one alone once it is not.
         if self.deceased(age):
             return max(primary, spouse)

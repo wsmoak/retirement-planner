@@ -105,6 +105,22 @@ export interface PartTimeWork {
     endAge: number;
 }
 
+/**
+ * MFJ only: the spouse's own earned income.
+ *
+ * Named "work" rather than "part-time" deliberately — the common case is a **younger
+ * spouse who simply carries on working full time** for several years after the primary
+ * retires. The simulation still has only one retirement date (it starts when the
+ * primary retires), so those years are modeled as the spouse continuing to earn rather
+ * than as a second retirement event.
+ *
+ * `startAge` and `endAge` are the SPOUSE'S OWN ages, not the household clock — you
+ * enter "she works until she's 60", and the engine translates through the age gap.
+ * That matches the second-stage healthcare input and how people actually think about
+ * it; it does NOT match the primary's `partTimeWork`, whose ages are the primary's.
+ */
+export type SpouseWork = PartTimeWork;
+
 export interface RentalIncome {
     enabled: boolean;
     annualNetIncome: number;
@@ -264,6 +280,12 @@ export interface UserInputs {
         spouseSocialSecurity?: SocialSecurity;
         pensions: Pension[];
         partTimeWork: PartTimeWork;
+        /**
+         * MFJ only: the spouse's own earned income, in THEIR age frame. Optional — absent
+         * means the spouse earns nothing, which is how the model behaved before this
+         * existed, so saved scenarios recompute unchanged.
+         */
+        spouseWork?: SpouseWork;
         rentalIncome: RentalIncome;
     };
     healthcare: {

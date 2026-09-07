@@ -148,6 +148,7 @@ export function calculateYearlyProjection(
         // benefit keeps receiving COLA, so it must go on being computed after a death.
         household.spouseAgeNotional,
         deceased,
+        income.spouseWork,
         inputs.oneTimeIncome,
         personal.retirementAge
     );

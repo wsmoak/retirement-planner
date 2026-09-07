@@ -184,8 +184,9 @@ export function Screen1Plan() {
                         There is only <strong>one retirement date</strong>: the simulation starts when
                         you retire. Your spouse&apos;s age here is their age <em>in that year</em>, which
                         fixes the gap between you — it is <strong>not</strong> the age they stop working.
-                        If your spouse keeps working, model it on the Healthcare step (their premium can
-                        change when they retire) and enter their wages as part-time work.
+                        If your spouse keeps working after you retire, enter their pay under
+                        <strong> Spouse&apos;s Work Income</strong> on the next step (in their ages), and
+                        their changing health coverage on the step after that.
                     </p>
                     </>
                 )}
