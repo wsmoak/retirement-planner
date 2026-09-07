@@ -1,6 +1,6 @@
 // src/lib/constants.ts
 
-import type { SocialSecurity, USState, UserInputs } from '@/types';
+import type { SocialSecurity, SpouseWork, USState, UserInputs } from '@/types';
 
 /**
  * Seed values for a spouse's Social Security, applied when the user first switches
@@ -17,6 +17,20 @@ export const DEFAULT_SPOUSE_SOCIAL_SECURITY: SocialSecurity = {
 /** Spouse's age the year the primary retires, seeded when the user first switches to
  *  married-filing-jointly. A sensible, editable baseline (spouse a couple years younger). */
 export const DEFAULT_SPOUSE_AGE_AT_RETIREMENT = 56;
+
+/**
+ * Seed for the spouse's own earned income, switched OFF.
+ *
+ * The ages are the SPOUSE'S OWN, not the household clock — the common shape is a younger
+ * spouse who keeps working until their own early sixties after the primary has retired.
+ * Zero income so nothing changes until the user fills it in.
+ */
+export const DEFAULT_SPOUSE_WORK: SpouseWork = {
+    enabled: false,
+    annualIncome: 0,
+    startAge: DEFAULT_SPOUSE_AGE_AT_RETIREMENT,
+    endAge: 62,
+};
 
 /**
  * Share of the couple's living expenses the survivor still spends after the first

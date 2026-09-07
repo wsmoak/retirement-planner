@@ -12,12 +12,13 @@ import type {
     Pension,
     PartTimeWork,
     RentalIncome,
+    SpouseWork,
     TaxSettings,
     SimulationSettings,
     PreMedicareCosts,
     MedicareCosts,
 } from '@/types';
-import { DEFAULT_VALUES, DEFAULT_SPOUSE_SOCIAL_SECURITY } from '@/lib/constants';
+import { DEFAULT_VALUES, DEFAULT_SPOUSE_SOCIAL_SECURITY, DEFAULT_SPOUSE_WORK } from '@/lib/constants';
 
 interface InputsContextType {
     inputs: UserInputs;
@@ -37,6 +38,7 @@ interface InputsContextType {
     removePension: (id: string) => void;
     updatePension: (id: string, data: Partial<Pension>) => void;
     updatePartTimeWork: (data: Partial<PartTimeWork>) => void;
+    updateSpouseWork: (data: Partial<SpouseWork>) => void;
     updateRentalIncome: (data: Partial<RentalIncome>) => void;
     updateHealthcare: (type: 'preMedicare' | 'spousePreMedicare' | 'medicare', data: Partial<PreMedicareCosts & MedicareCosts>) => void;
     updateTax: (data: Partial<TaxSettings>) => void;
@@ -185,6 +187,18 @@ export function InputsProvider({ children }: { children: ReactNode }) {
         }));
     }, []);
 
+    // The spouse's own earned income. Absent until first edited, so seed it disabled
+    // with sensible ages rather than spreading undefined.
+    const updateSpouseWork = useCallback((data: Partial<SpouseWork>) => {
+        setInputs((prev: UserInputs) => ({
+            ...prev,
+            income: {
+                ...prev.income,
+                spouseWork: { ...(prev.income.spouseWork ?? DEFAULT_SPOUSE_WORK), ...data },
+            },
+        }));
+    }, []);
+
     const updateRentalIncome = useCallback((data: Partial<RentalIncome>) => {
         setInputs((prev: UserInputs) => ({
             ...prev,
@@ -264,6 +278,7 @@ export function InputsProvider({ children }: { children: ReactNode }) {
                 removePension,
                 updatePension,
                 updatePartTimeWork,
+                updateSpouseWork,
                 updateRentalIncome,
                 updateHealthcare,
                 updateTax,

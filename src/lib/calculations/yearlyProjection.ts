@@ -122,7 +122,8 @@ export function calculateYearlyProjection(
         // The NOTIONAL spouse age: a survivor inherits the larger benefit, and that
         // benefit keeps receiving COLA, so it must go on being computed after a death.
         household.spouseAgeNotional,
-        deceased
+        deceased,
+        income.spouseWork
     );
 
     // STEP 3: Calculate expenses

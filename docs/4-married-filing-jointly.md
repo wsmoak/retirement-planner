@@ -29,7 +29,7 @@ own 65 internally — that's the two-track cost model, separate from the primary
 | 2 | Survivor's penalty | **Modeled.** At the first death: filing flips MFJ→single, the smaller SS check stops, healthcare drops to one track, and living expenses step down to `SURVIVOR_SPENDING_FACTOR` (0.75). Mortality itself is still deterministic — see #3 |
 | 3 | Life expectancy | **Per spouse.** Each has their own planning age; the sim runs to the **later** of the two. Fixed ages, not a distribution, so the survivor period's *length* is an assumption |
 | 4 | Retirement timing | **Same year** — sim starts when you retire; spouse rides your calendar at a constant age gap |
-| 5 | Younger spouse still working | **Not modeled** (no spouse earned income; only your part-time) |
+| 5 | Younger spouse still working | **Modeled as continued earnings**, not as a second retirement date. `income.spouseWork` takes their pay with start/end ages in **their own** age frame; it drives **their** SS earnings test only, and wages are pooled for tax |
 | 6 | Accounts | **Pooled** (one combined set) |
 | 7 | RMD | **Flat age 75**; for the pool, triggered when the **older** spouse turns 75, using that age's divisor on the whole balance |
 | 8 | Social Security | **Two own-record streams** summed for the provisional-income formula while both are alive; the **larger one alone** after the first death. COLA and taxable-% are **shared** household values. No spousal (≤50%) top-up |
@@ -72,8 +72,12 @@ own 65 internally — that's the two-track cost model, separate from the primary
   dates remain unmodeled — see the roadmap.
 - **Own-record SS only** — the survivor takes the larger of the two own-record benefits, which is
   the substance of the survivor rule, but there is no spousal (≤50%) top-up.
-- **Part-time work belongs to the primary**, so it stops if the primary dies first. The spouse's
-  own earned income is not modeled at all.
+- **Each person's earned income is their own**, and stops when its owner dies. The one asymmetry
+  left is the age frame: the primary's `partTimeWork` uses the household clock, the spouse's
+  `spouseWork` uses their own ages — because that is how each is naturally entered.
+- **Still one retirement date.** A spouse who keeps working is modeled as continuing to earn, so
+  the simulation starts at the primary's retirement. Pension and rental start ages therefore run
+  on the primary's timeline regardless of whose they are.
 
 ## How other tools handle these choices
 

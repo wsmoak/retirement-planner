@@ -10,11 +10,8 @@
  * - Rental income (with optional inflation adjustment)
  */
 
-import {
-    calculateSocialSecurityWithEarningsTest,
-    calculateSocialSecurityBenefit,
-} from './socialSecurity';
-import type { Pension, PartTimeWork, RentalIncome, SocialSecurity } from '@/types';
+import { calculateSocialSecurityWithEarningsTest } from './socialSecurity';
+import type { Pension, PartTimeWork, RentalIncome, SocialSecurity, SpouseWork } from '@/types';
 import type { DeceasedPerson } from '@/lib/calculations/household';
 
 /**
@@ -266,7 +263,12 @@ export function calculateYearlyIncome(
      * Which spouse has died, if either. Once one has, the household stops receiving
      * two checks and receives one survivor benefit instead. See `household.ts`.
      */
-    deceased?: DeceasedPerson
+    deceased?: DeceasedPerson,
+    /**
+     * MFJ only: the spouse's own earned income. Its `startAge`/`endAge` are the SPOUSE'S
+     * ages, so it is evaluated against `spouseAge`, not the household clock.
+     */
+    spouseWork?: SpouseWork
 ): {
     socialSecurity: number;
     socialSecurityFull: number;
@@ -279,10 +281,12 @@ export function calculateYearlyIncome(
     rentalIncome: number;
     totalBeforeWithdrawals: number;
 } {
-    // Part-time work belongs to the PRIMARY — the spouse's own earned income isn't
-    // modeled. So it stops at the primary's death, along with the earnings test that
-    // only ever applied to their benefit.
+    // Each person's earned income is their own: `partTimeWork` is the primary's, keyed
+    // to the household clock; `spouseWork` is the spouse's, keyed to THEIR age. Each
+    // drives only its owner's Social Security earnings test, and each stops when its
+    // owner dies.
     const primaryDeceased = deceased === 'primary';
+    const spouseDeceased = deceased === 'spouse';
 
     // Social Security with earnings test
     const { grossIncome: partTimeGross } = primaryDeceased
@@ -297,17 +301,28 @@ export function calculateYearlyIncome(
         partTimeGross
     );
 
-    // Spouse Social Security (MFJ). No earnings test — the spouse's own work isn't
-    // modeled. Computed from the notional age, so it stays available as the basis
-    // for a survivor benefit even after the spouse has died.
+    // Spouse's earned income. Their `startAge`/`endAge` are their OWN ages, so this is
+    // evaluated against the notional spouse age rather than the household clock — you
+    // enter "she works until she's 60" and it lands in the right calendar years.
+    const { grossIncome: spouseWorkGross, payrollTax: spouseWorkPayrollTax } =
+        spouseWork && spouseAge !== undefined && !spouseDeceased
+            ? calculatePartTimeWorkIncome(spouseAge, spouseWork)
+            : { grossIncome: 0, payrollTax: 0 };
+
+    // Spouse Social Security (MFJ), with THEIR OWN earnings test — a spouse still working
+    // before their FRA has their benefit withheld just as the primary would. Computed from
+    // the notional age so it stays available as the basis for a survivor benefit even after
+    // the spouse has died; their work has stopped by then, so no test applies and the full
+    // benefit is what the survivor comparison sees.
     const spouseBenefit =
         spouseSocialSecurity && spouseAge !== undefined
-            ? calculateSocialSecurityBenefit(
+            ? calculateSocialSecurityWithEarningsTest(
                 spouseAge,
                 spouseSocialSecurity.claimingAge,
                 spouseSocialSecurity.monthlyBenefitAtFRA,
-                spouseSocialSecurity.colaRate
-            )
+                spouseSocialSecurity.colaRate,
+                spouseWorkGross
+            ).finalBenefit
             : 0;
 
     // A survivor keeps the LARGER of the two benefits, not both — the smaller check
@@ -321,10 +336,15 @@ export function calculateYearlyIncome(
     const pensionTotal = calculateTotalPensionIncome(currentAge, pensions);
     const governmentPensionIncome = calculateGovernmentPensionIncome(currentAge, pensions);
 
-    // Part-time work (the primary's; zero once they are gone)
-    const { grossIncome: partTimeIncome, payrollTax: partTimePayrollTax } = primaryDeceased
+    // Household wages = the primary's (zero once they are gone) plus the spouse's. Summed
+    // here because for tax they are one pool of ordinary income; they were kept separate
+    // above only so each person's earnings test sees just their own earnings.
+    const { grossIncome: primaryWorkIncome, payrollTax: primaryWorkPayrollTax } = primaryDeceased
         ? { grossIncome: 0, payrollTax: 0 }
         : calculatePartTimeWorkIncome(currentAge, partTimeWork);
+
+    const partTimeIncome = primaryWorkIncome + spouseWorkGross;
+    const partTimePayrollTax = primaryWorkPayrollTax + spouseWorkPayrollTax;
 
     // Rental income
     const rentalIncomeAmount = calculateRentalIncome(

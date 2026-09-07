@@ -6,7 +6,7 @@
 // sources (Pension, Part-Time, Rental) use a compact "+ Add" pattern to save vertical space.
 
 import { useInputs } from '@/contexts/InputsContext';
-import { DEFAULT_VALUES, DEFAULT_SPOUSE_SOCIAL_SECURITY } from '@/lib/constants';
+import { DEFAULT_VALUES, DEFAULT_SPOUSE_SOCIAL_SECURITY, DEFAULT_SPOUSE_WORK } from '@/lib/constants';
 import { Trash2, AlertCircle } from 'lucide-react';
 import type { Pension } from '@/types';
 import { CollapsibleHelpPanel } from '@/components/common/CollapsibleHelpPanel';
@@ -29,6 +29,7 @@ export function Screen2SavingsIncome() {
         removePension,
         updatePension,
         updatePartTimeWork,
+        updateSpouseWork,
         updateRentalIncome,
     } = useInputs();
     const { accounts, income, personal, mode } = inputs;
@@ -403,9 +404,10 @@ export function Screen2SavingsIncome() {
                             </div>
                             {isMFJ && (
                                 <InlineGuidance className="mb-3">
-                                    Enter <strong>your</strong> earnings only. This figure drives your Social Security
-                                    earnings test, so adding a spouse’s income here would overstate the reduction to
-                                    your benefit. A spouse’s own part-time work isn’t modeled — see Disclosures.
+                                    Enter <strong>your</strong> earnings only, in <strong>your</strong> ages. This
+                                    figure drives <em>your</em> Social Security earnings test, so a spouse’s income
+                                    here would wrongly cut your benefit. Your spouse’s earnings have their own
+                                    entry below.
                                 </InlineGuidance>
                             )}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -437,6 +439,68 @@ export function Screen2SavingsIncome() {
                                 className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors whitespace-nowrap">+ Add</button>
                         </div>
                     )}
+
+                    {/* Spouse's Work Income — MFJ only. Their OWN ages, not the household clock. */}
+                    {isMFJ && ((income.spouseWork ?? DEFAULT_SPOUSE_WORK).enabled ? (
+                        <div className="border rounded-lg p-4 bg-gradient-to-r from-purple-50 to-white">
+                            <div className="flex justify-between items-center mb-3">
+                                <h4 className="font-semibold text-lg flex items-center gap-2">
+                                    Spouse’s Work Income
+                                    <ScopeBadge scope="per-person" />
+                                    <HelpPopover title="Spouse’s Work Income">
+                                        <p className="mb-2">
+                                            For a younger spouse who keeps working after you retire —
+                                            full-time or part-time, whichever it is.
+                                        </p>
+                                        <p className="mb-2">
+                                            Enter the ages in <strong>their</strong> age, not yours. &quot;She works
+                                            until she&apos;s 60&quot; means End Age 60, whatever your age is then.
+                                        </p>
+                                        <p>
+                                            Subject to 7.65% payroll tax and income tax, and it triggers
+                                            <em> their</em> Social Security earnings test if they claim before 67 —
+                                            never yours.
+                                        </p>
+                                    </HelpPopover>
+                                </h4>
+                                <button onClick={() => updateSpouseWork({ enabled: false })}
+                                    className="p-2 text-red-600 hover:bg-red-50 rounded-md" title="Remove spouse’s work income"><Trash2 className="w-5 h-5" /></button>
+                            </div>
+                            <InlineGuidance className="mb-3">
+                                Ages here are <strong>your spouse’s own</strong>. The simulation still has a
+                                single retirement date — yours — so a spouse who keeps working is modeled as
+                                continuing to earn, not as retiring later. Their healthcare while working goes
+                                on the next step.
+                            </InlineGuidance>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <CurrencyField
+                                    label="Annual Gross Income"
+                                    value={(income.spouseWork ?? DEFAULT_SPOUSE_WORK).annualIncome}
+                                    onChange={(annualIncome) => updateSpouseWork({ annualIncome })}
+                                    step={1000}
+                                />
+                                <NumberField
+                                    label="Start Age (theirs)"
+                                    value={(income.spouseWork ?? DEFAULT_SPOUSE_WORK).startAge}
+                                    onChange={(startAge) => updateSpouseWork({ startAge })}
+                                />
+                                <NumberField
+                                    label="End Age (theirs)"
+                                    value={(income.spouseWork ?? DEFAULT_SPOUSE_WORK).endAge}
+                                    onChange={(endAge) => updateSpouseWork({ endAge })}
+                                />
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 border rounded-lg p-4 bg-gray-50">
+                            <div>
+                                <span className="font-medium">Spouse’s Work Income</span>
+                                <span className="text-sm text-gray-500 ml-2">A younger spouse who keeps working after you retire</span>
+                            </div>
+                            <button onClick={() => updateSpouseWork({ enabled: true })}
+                                className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors whitespace-nowrap">+ Add</button>
+                        </div>
+                    ))}
 
                     {/* Rental Income — + Add pattern */}
                     {income.rentalIncome.enabled ? (
